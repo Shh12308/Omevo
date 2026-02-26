@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Snaptalk Admin + Home</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js"></script>
+  <style>
+    /* === Background === */
+body {
+  margin: 0;
+  background: linear-gradient(120deg, #4b6cb7, #182848, #2b5876);
+  background-size: 200% 200%;
+  animation: gradientShift 20s ease infinite;
+  color: #f0f3f7;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* === Toggle buttons === */
+.toggle-btn {
+  position: fixed;
+  top: 20px;
+  padding: 10px 16px;
+  background: #2575fc;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  z-index: 999;
+}
+
+#toggleSidebarBtn { left: 20px; }
+#toggleHomeBtn { left: 120px; }
+
+/* === Sidebar === */
+.sidebar {
+  background: rgba(23, 32, 42, 0.95);
+  backdrop-filter: blur(8px);
+  border-right: 2px solid #2575fc;
+  width: 250px;
+  min-height: 100vh;
+  transition: transform 0.3s ease;
+  transform: translateX(0);
+  position: fixed;
+  top: 0;
+  left: 0;
+  padding: 20px;
+}
+
+.sidebar.hidden {
+  transform: translateX(-100%);
+}
+
+.sidebar h1 {
+  font-size: 28px;
+  margin-bottom: 20px;
+  color: #0ff;
+}
+
+.sidebar button {
+  background: linear-gradient(135deg, #6a11cb, #2575fc);
+  border: none;
+  color: #fff;
+  padding: 12px 20px;
+  margin-top: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  width: 100%;
+  font-weight: 600;
+  transition: background 0.3s;
+}
+
+.sidebar button:hover {
+  background: linear-gradient(135deg, #2575fc, #6a11cb);
+}
+
+/* === Main content === */
+.content {
+  margin-left: 250px;
+  transition: margin-left 0.3s ease;
+  padding: 40px;
+}
+
+.sidebar.hidden ~ .content {
+  margin-left: 0;
+}
+
+section {
+  margin-bottom: 40px;
+}
+
+h2 {
+  font-size: 24px;
+  margin-bottom: 10px;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  background: rgba(23, 32, 42, 0.75);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+th, td {
+  border: 1px solid #444;
+  padding: 10px;
+  text-align: left;
+}
+
+th {
+  background: rgba(37, 117, 252, 0.8);
+}
+
+img {
+  max-width: 100px;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+button.action-btn {
+  background: #2575fc;
+  color: #fff;
+  border: none;
+  padding: 6px 10px;
+  margin: 2px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+button.action-btn:hover {
+  background: #155fcc;
+}
+
+/* === Home Content === */
+.home {
+  display: block;
+  max-width: 600px;
+  margin: 40px auto;
+  background: rgba(23, 32, 42, 0.85);
+  padding: 30px;
+  border-radius: 16px;
+  text-align: center;
+}
+
+.home.hidden {
+  display: none;
+}
+
+.home h1 {
+  font-size: 40px;
+  margin-bottom: 15px;
+}
+
+.home p {
+  font-size: 18px;
+  margin-bottom: 20px;
+}
+
+.home .btn {
+  padding: 14px 28px;
+  font-size: 20px;
+  background: linear-gradient(135deg, #6a11cb, #2575fc);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  margin: 10px;
+  transition: background 0.3s;
+}
+
+.home .btn:hover {
+  background: linear-gradient(135deg, #2575fc, #6a11cb);
+}
+
+/* === Responsive Design === */
+@media (max-width: 768px) {
+  body {
+    font-size: 14px;
+  }
+  .sidebar {
+    width: 200px;
+  }
+  .content {
+    margin-left: 0;
+  }
+  .toggle-btn {
+    top: 15px;
+    left: 15px;
+  }
+  .home {
+    max-width: 90%;
+    padding: 20px;
+  }
+  .sidebar.hidden ~ .content {
+    margin-left: 0;
+  }
+  .home h1 {
+    font-size: 30px;
+  }
+  .home p {
+    font-size: 16px;
+  }
+}
+
+/* === Shadows and Hover Effects === */
+.sidebar, .content, .home {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.sidebar button:hover, .home .btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+/* === Button Hover Transitions === */
+button {
+  transition: background 0.3s ease, transform 0.3s ease;
+}
+
+button:hover {
+  transform: translateY(-3px);
+}
+
+button.action-btn {
+  transition: background 0.3s ease, transform 0.2s ease;
+}
+
+button.action-btn:hover {
+  transform: scale(1.05);
+  background: #155fcc;
+}
+
+/* === Link Styling === */
+a {
+  color: #2575fc;
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+a:hover {
+  color: #0ff;
+  text-decoration: underline;
+}
+
+/* === Smooth Scroll === */
+html {
+  scroll-behavior: smooth;
+}
+
+/* === Flexbox for Sidebar Toggle === */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.sidebar.hidden {
+  display: none;
+}
+
+.content {
+  transition: transform 0.3s ease;
+}
+
+.sidebar.hidden ~ .content {
+  transform: translateX(0);
+}
+
+/* === Custom Scrollbars === */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2575fc;
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #0ff;
+}
+
+::-webkit-scrollbar-track {
+  background: #444;
+}
+
+/* === Table Styles === */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  background: rgba(23, 32, 42, 0.75);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+th, td {
+  border: 1px solid #444;
+  padding: 12px;
+  text-align: left;
+  font-size: 14px;
+}
+
+th {
+  background: rgba(37, 117, 252, 0.8);
+}
+
+td:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+img {
+  max-width: 100px;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+/* === Social Media Icons === */
+.home-social_ico {
+  width: 30px;
+  height: 30px;
+  margin: 10px;
+  transition: transform 0.2s ease;
+}
+
+.home-social_ico:hover {
+  transform: scale(1.1);
+  opacity: 0.8;
+}
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
+    <h1>Admin Panel</h1>
+    <p>Online: <span id="onlineCount">0</span></p>
+    <button onclick="loadReports()">Reload Reports</button>
+    <button onclick="loadUsers()">Reload Users</button>
+  </div>
+
+  <!-- Toggle Buttons -->
+  <button id="toggleSidebarBtn" class="toggle-btn">☰ Dashboard</button>
+  <button id="toggleHomeBtn" class="toggle-btn">🏠 Home</button>
+
+  <!-- Content Area -->
+  <div class="content">
+    <!-- Home Section -->
+    <div class="home" id="homeSection">
+      <h1>Welcome to Snaptalk!</h1>
+      <p>Connect with new people instantly. Choose an option below.</p>
+      <button class="btn"><a href="achat.html" style="color:white;text-decoration:none;">Start Video Chat</a></button>
+      <button class="btn"><a href="text.html" style="color:white;text-decoration:none;">Start Text Chat</a></button>
+    </div>
+
+    <!-- Admin Data Section -->
+    <section>
+      <h2>🚩 Reports</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Reporter</th>
+            <th>Reported</th>
+            <th>Reason</th>
+            <th>Proof</th>
+            <th>Time</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="reportsTable"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>👥 Users</h2>
+      <label><input type="checkbox" id="activeOnlyToggle" checked> Show Active Only</label>
+      <table>
+        <thead>
+          <tr>
+            <th>UID</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Online</th>
+            <th>Last Seen</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="usersTable"></tbody>
+      </table>
+    </section>
+  </div>
+
+  <script>
+    // === Firebase ===
+    const firebaseConfig = {
+      apiKey: "...",
+      authDomain: "...",
+      projectId: "...",
+      storageBucket: "...",
+      messagingSenderId: "...",
+      appId: "..."
+    };
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    // === Socket.io ===
+    const socket = io();
+
+    // === DOM ===
+    const onlineCount = document.getElementById('onlineCount');
+    const reportsTable = document.getElementById('reportsTable');
+    const usersTable = document.getElementById('usersTable');
+    const activeOnlyToggle = document.getElementById('activeOnlyToggle');
+    const sidebar = document.getElementById('sidebar');
+    const homeSection = document.getElementById('homeSection');
+
+    // === Toggles ===
+    document.getElementById('toggleSidebarBtn').onclick = () => {
+      sidebar.classList.toggle('hidden');
+    };
+    document.getElementById('toggleHomeBtn').onclick = () => {
+      homeSection.classList.toggle('hidden');
+    };
+
+    // === Socket updates ===
+    socket.on('update_online', count => {
+      onlineCount.textContent = count;
+    });
+
+    // === Auth ===
+    auth.onAuthStateChanged(async user => {
+      if (user) {
+        const u = await db.collection('users').doc(user.uid).get();
+        if (u.exists && u.data().role === 'admin') {
+          loadReports();
+          loadUsers();
+        } else {
+          alert('Not authorized.');
+          location.href = '/';
+        }
+      } else {
+        location.href = '/login.html';
+      }
+    });
+
+    // === Reports ===
+    async function loadReports() {
+      const snap = await db.collection('reports').where('resolved', '==', false).get();
+      reportsTable.innerHTML = '';
+      snap.forEach(doc => {
+        const r = doc.data();
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${r.reporterId}</td>
+          <td>${r.reportedId}</td>
+          <td>${r.reason}</td>
+          <td><img src="${r.proofURL}" onclick="window.open('${r.proofURL}','_blank')" /></td>
+          <td>${new Date(r.timestamp.toDate()).toLocaleString()}</td>
+          <td>
+            <button class="action-btn" onclick="banUser('${r.reportedId}')">Ban</button>
+            <button class="action-btn" onclick="resolveReport('${doc.id}')">Ignore</button>
+          </td>
+        `;
+        reportsTable.appendChild(row);
+      });
+    }
+    async function resolveReport(id) {
+      await db.collection('reports').doc(id).update({ resolved: true });
+      loadReports();
+    }
+
+    // === Users ===
+    activeOnlyToggle.onchange = loadUsers;
+    async function loadUsers() {
+      const snap = await db.collection('users').get();
+      usersTable.innerHTML = '';
+      snap.forEach(doc => {
+        const u = doc.data();
+        if (activeOnlyToggle.checked && !u.online) return;
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${doc.id}</td>
+          <td>${u.email || '-'}</td>
+          <td>${u.role || '-'}</td>
+          <td>${u.online ? '✅' : '❌'}</td>
+          <td>${u.lastSeen ? new Date(u.lastSeen.toDate()).toLocaleString() : '-'}</td>
+          <td>
+            <button class="action-btn" onclick="banUser('${doc.id}')">Ban</button>
+            <button class="action-btn" onclick="forceLogout('${doc.id}')">Logout</button>
+          </td>
+        `;
+        usersTable.appendChild(row);
+      });
+    }
+
+    async function banUser(uid) {
+      await db.collection('users').doc(uid).update({ banned: true });
+      socket.emit('admin_ban_uid', uid);
+      alert('User banned.');
+      loadReports();
+      loadUsers();
+    }
+
+    function forceLogout(uid) {
+      socket.emit('admin_logout_uid', uid);
+      alert('User logged out.');
+    }
+  </script>
+</body>
+</html>

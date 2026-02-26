@@ -1,0 +1,251 @@
+/* === RESET === */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  background: #000;
+  color: white;
+  font-family: 'Segoe UI', 'Roboto', sans-serif;
+  overflow: hidden;
+}
+
+/* === UTILITIES === */
+.hidden { opacity: 0 !important; pointer-events: none !important; display: none !important; }
+.fade-ui { transition: opacity 0.3s ease; }
+
+/* === WATERMARK LOGO === */
+#watermarkLogo {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  opacity: 0.7;
+  z-index: 9999;
+  pointer-events: none;
+  user-select: none;
+}
+#watermarkLogo img {
+  max-width: 110px;
+  height: auto;
+  filter: drop-shadow(0 0 5px rgba(0,0,0,0.6));
+}
+
+/* === BLUR OVERLAY (Searching/Loading) === */
+#blurOverlay {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  backdrop-filter: blur(18px);
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+  transition: opacity 0.4s ease;
+}
+#blurOverlay.hidden { opacity: 0; pointer-events: none; }
+#blurOverlay span {
+  font-size: 1.4rem;
+  font-weight: bold;
+  color: white;
+  text-shadow: 0 0 10px rgba(0,0,0,0.8);
+}
+
+/* === VIDEO === */
+#videoContainer {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+#remoteVideo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: filter 0.5s ease;
+}
+
+#localVideo {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: 180px;
+  height: 120px;
+  object-fit: cover;
+  z-index: 2;
+  border-radius: 12px;
+  border: 2px solid rgba(255,255,255,0.6);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+/* === INITIAL BUTTONS === */
+#initialButtons {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  z-index: 10;
+}
+
+#initialButtons button {
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 50%;
+  padding: 18px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+#initialButtons button:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+/* === TOGGLE PREFERENCES BUTTON === */
+#togglePrefsBtn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 50%;
+  padding: 14px;
+  cursor: pointer;
+  z-index: 15;
+  transition: all 0.25s ease;
+}
+#togglePrefsBtn:hover { background: rgba(255,255,255,0.2); }
+
+/* === PREFERENCES SIDEBAR === */
+#preferences {
+  position: fixed;
+  top: 0;
+  left: -100%;
+  width: 85%;
+  max-width: 320px;
+  height: 100%;
+  background: rgba(0,0,0,0.92);
+  backdrop-filter: blur(12px);
+  color: #fff;
+  padding: 20px;
+  transition: left 0.35s ease-in-out;
+  z-index: 999;
+  overflow-y: auto;
+}
+
+#preferences.show { left: 0; }
+#preferences h2 { font-size: 20px; margin-bottom: 14px; }
+#preferences label { display: block; margin: 14px 0 6px; font-size: 13px; font-weight: 600; }
+#preferences select, #preferences input {
+  width: 100%; padding: 10px;
+  border: none; border-radius: 6px;
+  background: #222; color: #fff;
+}
+#preferences button {
+  margin-top: 20px;
+  width: 100%;
+  background: linear-gradient(135deg, #00aaff, #008ecc);
+  border: none; padding: 12px;
+  color: white; font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* === CALL BUTTONS === */
+#callButtons {
+  position: absolute;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 28px;
+  z-index: 20;
+}
+
+#callButtons button {
+  background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 50%;
+  padding: 18px;
+  cursor: pointer;
+  transition: background 0.25s ease;
+}
+#callButtons button:hover { background: rgba(255,255,255,0.2); }
+
+/* === CHAT === */
+#chatContainer {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  background: rgba(0,0,0,0.35);
+  backdrop-filter: blur(8px);
+  padding: 8px;
+  z-index: 25;
+}
+
+#chatBox {
+  max-height: 140px;
+  overflow-y: auto;
+  font-size: 14px;
+  padding: 5px;
+}
+#chatInputRow {
+  display: flex;
+  gap: 8px;
+}
+#chatInput {
+  flex: 1;
+  padding: 8px;
+  border-radius: 5px;
+  border: none;
+  background: #222;
+  color: #fff;
+}
+#sendChatBtn {
+  background: linear-gradient(135deg, #00aaff, #008ecc);
+  border: none;
+  padding: 0 12px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+/* === BAN OVERLAY === */
+#banOverlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.92);
+  color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  text-align: center;
+  padding: 20px;
+}
+
+/* === MOBILE === */
+@media (max-width: 768px) {
+  #localVideo {
+    width: 120px; height: 90px;
+    bottom: 10px; right: 10px;
+  }
+  #callButtons {
+    bottom: 80px;
+    gap: 20px;
+  }
+  #watermarkLogo img {
+    max-width: 85px;
+  }
+}

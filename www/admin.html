@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Snaptalk Admin</title>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js"></script>
+
+  <!-- Agora SDK -->
+  <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
+
+  <!-- Confetti (optional) -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      height: 100vh;
+      background: #000;
+      color: #fff;
+      font-family: sans-serif;
+      overflow: hidden;
+    }
+
+    #videoContainer {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    video {
+      width: 100%;
+      height: 50%;
+      object-fit: cover;
+      background: #000;
+    }
+
+    #remoteVideo {
+      z-index: 1;
+    }
+
+    #localVideo {
+      transform: scaleX(-1);
+      z-index: 2;
+    }
+
+    #adminBadge {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: gold;
+      color: black;
+      padding: 5px 12px;
+      border-radius: 8px;
+      font-weight: bold;
+      z-index: 10;
+    }
+
+    #adminStatus, #onlineCount, #banCount {
+      position: absolute;
+      left: 120px;
+      background: rgba(34, 34, 34, 0.9);
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    #adminStatus { top: 20px; }
+    #onlineCount { top: 60px; }
+    #banCount { top: 90px; }
+
+    #togglePreferencesBtn {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: gold;
+      color: black;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 15px;
+      cursor: pointer;
+      font-weight: bold;
+      z-index: 20;
+    }
+
+    #preferences {
+      position: fixed;
+      top: 0;
+      right: -260px;
+      width: 260px;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.95);
+      padding: 20px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      transition: right 0.3s ease;
+      z-index: 30;
+    }
+
+    #preferences.open {
+      right: 0;
+    }
+
+    #preferences label {
+      display: block;
+      margin-bottom: 10px;
+    }
+
+    #preferences select {
+      width: 100%;
+      padding: 5px;
+      border-radius: 5px;
+      border: none;
+    }
+
+    #controls {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 20px;
+      z-index: 10;
+    }
+
+    button {
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      border-radius: 8px;
+      padding: 10px 15px;
+      color: white;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    #soundboard {
+      position: absolute;
+      bottom: 100px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 10px;
+      border-radius: 8px;
+      z-index: 10;
+    }
+
+    #stealthBadge {
+      position: absolute;
+      top: 60px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      color: #0f0;
+      padding: 5px 12px;
+      border-radius: 8px;
+      font-weight: bold;
+      z-index: 9999;
+      display: none;
+    }
+  </style>
+<style>
+  /* Insert previous styles... */
+
+  /* Searching overlay with blur */
+  #searchOverlay {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 50%;
+    backdrop-filter: blur(8px);
+    background: rgba(0,0,0,0.6);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+    pointer-events: none;
+    color: white;
+    font-size: 1.5em;
+    font-weight: bold;
+  }
+  .dots::after {
+    content: '';
+    animation: dots 1.5s steps(3,end) infinite;
+  }
+  @keyframes dots {
+    0% { content: ''; } 33% { content: '.'; } 66% { content: '..'; } 100% { content: '...'; }
+  }
+
+  /* Chat container */
+  #chatContainer {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    max-height: 40%;
+    background: rgba(0,0,0,0.6);
+    display: none;
+    flex-direction: column;
+    z-index: 10;
+  }
+  #chatMessages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    color: white;
+  }
+  #chatInputContainer {
+    display: flex;
+  }
+  #chatInput {
+    flex: 1;
+    padding: 10px;
+    border: none;
+  }
+  #chatSendBtn {
+    background: #333;
+    color: white;
+    border: none;
+    padding: 0 15px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<div id="videoContainer">
+  <video id="remoteVideo" autoplay playsinline muted></video>
+  <video id="localVideo" autoplay playsinline muted></video>
+
+  <div id="adminBadge">👑 ADMIN</div>
+  <div id="adminStatus">Verifying...</div>
+  <div id="onlineCount">Online: 0</div>
+  <div id="banCount">Bans Today: 0</div>
+
+  <button id="togglePreferencesBtn">⚙️ Preferences</button>
+
+  <div id="preferences">
+    <h3>Preferences</h3>
+    <div>
+      <label>Gender:</label>
+      <select id="genderSelect">
+        <option value="any">Any</option>
+        <option value="male">Male</option>
+        <option value="female">Female</option>
+      </select>
+    </div>
+    <div>
+      <label>Location:</label>
+      <select id="locationSelect">
+        <option value="any">Any</option>
+        <option value="us">US</option>
+        <option value="uk">UK</option>
+        <option value="in">India</option>
+      </select>
+    </div>
+    <div>
+      <label>Age Group:</label>
+      <select id="ageSelect">
+        <option value="13-17">13–17</option>
+        <option value="18+">18+</option>
+      </select>
+    </div>
+    <button id="savePreferencesBtn">Save</button>
+  </div>
+
+  <div id="controls">
+    <button id="startBtn">Start</button>
+    <button id="homeBtn">Home</button>
+    <button id="skipBtn" style="display:none;">Skip</button>
+    <button id="banBtn" style="display:none;">Ban 🚫</button>
+    <button id="ghostBtn" style="display:none;">Ghost 👻</button>
+    <button id="stealthBtn" style="display:none;">Stealth 🕵️</button>
+  </div>
+
+  <div id="soundboard">
+    <button class="sound-btn" data-effect="honk">Honk</button>
+    <button class="sound-btn" data-effect="clap">Clap</button>
+    <button class="sound-btn" data-effect="boo">Boo</button>
+  </div>
+
+  <div id="stealthBadge">🕵️ Stealth Mode ON</div>
+</div>
+<div id="searchOverlay">
+  Searching for partner<span class="dots"></span>
+</div>
+
+<div id="chatContainer">
+  <div id="chatMessages"></div>
+  <div id="chatInputContainer">
+    <input id="chatInput" type="text" placeholder="Type a message...">
+    <button id="chatSendBtn">Send</button>
+  </div>
+</div>
+
+<button id="blockBtn" style="display:none;">Block 🚫</button>
+<!-- === Agora-based Admin Panel Logic === -->
+<script type="module">
+// === CONFIG ===
+const BACKEND_BASE_URL = "https://shh1.onrender.com";
+const AGORA_APP_ID = "064c97effe4241b689abe24f178c2bba";
+const AGORA_RTM_APP_ID = AGORA_APP_ID;  // RTM uses the same App ID
+
+// === Firebase Init ===
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBNhwdNP7wDEBcIvVApge_jQqC46GX-Ei0",
+  authDomain: "snaptalk-17f6d.firebaseapp.com",
+  projectId: "snaptalk-17f6d"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// === ELEMENTS ===
+const localVideo = document.getElementById("localVideo");
+const remoteVideo = document.getElementById("remoteVideo");
+const startBtn = document.getElementById("startBtn");
+const skipBtn = document.getElementById("skipBtn");
+const banBtn = document.getElementById("banBtn");
+const ghostBtn = document.getElementById("ghostBtn");
+const stealthBtn = document.getElementById("stealthBtn");
+const homeBtn = document.getElementById("homeBtn");
+const adminStatus = document.getElementById("adminStatus");
+const onlineCount = document.getElementById("onlineCount");
+const banCount = document.getElementById("banCount");
+const togglePrefsBtn = document.getElementById("togglePreferencesBtn");
+const savePrefsBtn = document.getElementById("savePreferencesBtn");
+const genderSelect = document.getElementById("genderSelect");
+const locationSelect = document.getElementById("locationSelect");
+const ageSelect = document.getElementById("ageSelect");
+const soundBtns = document.querySelectorAll(".sound-btn");
+const stealthBadge = document.getElementById("stealthBadge");
+const chatBox = document.getElementById("chatBox");
+const chatInput = document.getElementById("chatInput");
+
+// === Agora RTM ===
+let rtmClient;
+let rtmChannel;
+let reconnecting = false;
+
+// === VARIABLES ===
+let uid, channelName, currentPeerId;
+let bansToday = 0, stealthMode = false;
+let agoraClient, localStream;
+
+// === AUTH CHECK ===
+onAuthStateChanged(auth, async user => {
+  if (!user) return redirectToLogin();
+  uid = user.uid;
+  const snap = await getDoc(doc(db, "users", uid));
+  if (!snap.exists() || snap.data().role !== 'admin') return redirectToHome();
+  adminStatus.textContent = "✅ Admin Verified";
+});
+
+// === NAVIGATION ===
+function redirectToLogin() {
+  adminStatus.textContent = "⛔ Not logged in";
+  setTimeout(() => location.href = "/login.html", 2000);
+}
+
+function redirectToHome() {
+  adminStatus.textContent = "⛔ Not Admin";
+  setTimeout(() => location.href = "/", 2000);
+}
+
+// === PREFS TOGGLE ===
+togglePrefsBtn.onclick = () =>
+  document.getElementById("preferences").classList.toggle("open");
+
+// === SAVE PREFS (local + Firebase queue) ===
+savePrefsBtn.onclick = async () => {
+  const prefs = {
+    gender: genderSelect.value,
+    location: locationSelect.value,
+    age: ageSelect.value,
+    timestamp: Date.now()
+  };
+
+  localStorage.setItem("prefs", JSON.stringify(prefs));
+
+  await setDoc(doc(db, "queue", uid), {
+    uid,
+    gender: prefs.gender,
+    location: prefs.location,
+    age: prefs.age,
+    role: "admin",
+    timestamp: Date.now()
+  });
+
+  document.getElementById("preferences").classList.remove("open");
+  alert("✅ Preferences saved & sent to queue");
+};
+
+// === CONTROL BUTTONS ===
+startBtn.onclick = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    stream.getTracks().forEach(track => track.stop());
+
+    skipBtn.style.display = "inline-block";
+    banBtn.style.display = "inline-block";
+    stealthBtn.style.display = "inline-block";
+
+    startMatching();
+  } catch (err) {
+    alert("❌ Please allow camera and microphone access.");
+    console.error("Media access error:", err);
+  }
+};
+
+skipBtn.onclick = async () => {
+  clearChat();
+  await leaveChannel();
+  await startMatching();
+};
+
+homeBtn.onclick = () => location.href = "/admin.html";
+
+banBtn.onclick = async () => {
+  if (!currentPeerId) return alert("❌ No user to ban");
+
+  await setDoc(doc(db, "bans", currentPeerId), {
+    bannedBy: uid,
+    reason: "Admin ban",
+    expiresAt: Date.now() + 86400 * 1000
+  });
+
+  bansToday++;
+  banCount.textContent = `Bans Today: ${bansToday}`;
+  confetti();
+
+  await leaveChannel();
+  startMatching();
+};
+
+ghostBtn.onclick = () => alert("👻 Ghost mode not implemented yet");
+stealthBtn.onclick = () => toggleStealthMode(!stealthMode);
+
+// === SOUND BOARD ===
+soundBtns.forEach(btn => {
+  btn.onclick = () => alert(`🔊 Playing ${btn.dataset.effect}`);
+});
+
+// === PREFS RETRIEVAL ===
+function getPrefs() {
+  const p = JSON.parse(localStorage.getItem("prefs") || "{}");
+  return {
+    gender: p.gender || "any",
+    location: p.location || "any",
+    age: p.age || "18+"
+  };
+}
+
+// === MATCHING ===
+async function startMatching() {
+  const idToken = await auth.currentUser.getIdToken();
+  const prefs = getPrefs();
+
+  const res = await fetch(`${BACKEND_BASE_URL}/match`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uid, idToken, prefs })
+  });
+
+  const data = await res.json();
+
+  if (data.status === "matched") {
+    currentPeerId = data.peerId;
+    channelName = `chat-${[uid, data.peerId].sort().join("-")}`;
+    joinAgora(channelName);
+  } else {
+    console.log("🕐 Waiting for match...");
+  }
+}
+
+// === CHAT STORAGE (SYNC WITH FIRESTORE) ===
+async function addMessageToChat(sender, message) {
+  const newMessage = { sender, message, timestamp: Date.now() };
+
+  // Store locally and in Firestore for real-time sync
+  localChat.push(newMessage);
+  localStorage.setItem("chatHistory", JSON.stringify(localChat));
+  
+  await updateDoc(doc(db, "chats", channelName), {
+    messages: arrayUnion(newMessage)
+  });
+
+  // Append to chat box with blur animation
+  const messageElem = document.createElement("div");
+  messageElem.className = sender === "me" ? "my-msg" : "partner-msg";
+  messageElem.innerText = message;
+  chatBox.appendChild(messageElem);
+
+  // Apply blur animation
+  chatBox.style.filter = "blur(5px)";
+  setTimeout(() => chatBox.style.filter = "none", 300);  // Clear blur after animation
+}
+
+document.getElementById("chatSendBtn").onclick = () => {
+  const msg = chatInput.value.trim();
+  if (!msg) return;
+
+  addMessageToChat("me", msg);
+
+  if (rtmChannel) {
+    rtmChannel.sendMessage({ text: msg });
+  }
+
+  chatInput.value = "";
+};
+
+function onPartnerMessage(msg) {
+  addMessageToChat("partner", msg);
+}
+
+function clearChat() {
+  localChat = [];
+  localStorage.removeItem("chatHistory");
+  chatBox.innerHTML = "";
+}
+
+// === AGORA RTM ===
+async function joinRTM() {
+  try {
+    rtmClient = await AgoraRTM.createInstance(AGORA_RTM_APP_ID);
+
+    // Login with user token (use null for anonymous)
+    const token = await fetch(`${BACKEND_BASE_URL}/get-rtm-token?uid=${uid}`).then(res => res.json());
+    await rtmClient.login({ uid, token: token.rtmToken });
+
+    rtmChannel = await rtmClient.createChannel(channelName);
+    await rtmChannel.join();
+
+    // Listen for incoming messages
+    rtmChannel.on('ChannelMessage', (message, senderId) => {
+      if (senderId !== uid) {
+        onPartnerMessage(message.text);
+      }
+    });
+  } catch (err) {
+    console.error("RTM join failed:", err);
+    if (!reconnecting) {
+      reconnectRTM();
+    }
+  }
+}
+
+// === AUTO RECONNECT RTM ===
+function reconnectRTM() {
+  reconnecting = true;
+  console.log("🔄 Reconnecting to RTM...");
+
+  setTimeout(() => {
+    joinRTM().then(() => {
+      reconnecting = false;
+    }).catch(() => {
+      reconnecting = false;
+      alert("❌ RTM reconnection failed, please try again.");
+    });
+  }, 5000);  // Retry after 5 seconds
+}
+
+// === AGORA ===
+async function joinAgora(channel) {
+  const resp = await fetch(`${BACKEND_BASE_URL}/generate-token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uid, channel })
+  });
+
+  const { token } = await resp.json();
+
+  agoraClient = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+  await agoraClient.join(AGORA_APP_ID, channel, token, uid);
+
+  localStream = stealthMode
+    ? await createFakeVideo()
+    : await AgoraRTC.createMicrophoneAndCameraTracks();
+
+  await agoraClient.publish(localStream);
+  localVideo.srcObject = new MediaStream([localStream[1].getMediaStreamTrack()]);
+
+  agoraClient.on("user-published", async (user, mediaType) => {
+    await agoraClient.subscribe(user, mediaType);
+    if (mediaType === "video") {
+      remoteVideo.srcObject = new MediaStream([user.videoTrack.getMediaStreamTrack()]);
+    }
+  });
+
+  skipBtn.style.display = banBtn.style.display = stealthBtn.style.display = "inline-block";
+
+  // Initialize RTM for messaging
+  await joinRTM();
+}
+
+async function leaveChannel() {
+  if (agoraClient) await agoraClient.leave();
+  if (localStream) localStream.forEach(t => t.stop());
+  localVideo.srcObject = remoteVideo.srcObject = null;
+  currentPeerId = null;
+
+  // Leave RTM channel
+  if (rtmChannel) {
+    await rtmChannel.leave();
+    rtmChannel = null;
+  }
+}
+
+// === STEALTH MODE ===
+function toggleStealthMode(enable) {
+  stealthMode = enable;
+  stealthBadge.style.display = enable ? "block" : "none";
+}
+
+// === FAKE STREAM ===
+async function createFakeVideo() {
+  const vid = document.createElement("video");
+  vid.src = ageSelect.value === "13-17" ? "videos/teen1.mp4" : "videos/adult1.mp4";
+  vid.loop = vid.muted = true;
+  await vid.play();
+  return [null, vid.captureStream()];
+}
+
+// === CONFETTI ===
+function confetti() {
+  window.confetti({ particleCount: 50, spread: 60, origin: { y: 0.3 } });
+}
+</script>
+
+</body>
+</html>

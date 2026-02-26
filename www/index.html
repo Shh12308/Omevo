@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Omevo - Meet New People</title>
+
+<!-- Favicon / Website Icons -->
+<link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="48x48" href="/icons/favicon-48x48.png">
+<link rel="icon" type="image/png" sizes="64x64" href="/icons/favicon-64x64.png">
+<link rel="icon" type="image/png" sizes="96x96" href="/icons/favicon-96x96.png">
+<link rel="icon" type="image/png" sizes="128x128" href="/icons/favicon-128x128.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/favicon-192x192.png">
+<link rel="icon" type="image/png" sizes="256x256" href="/icons/favicon-256x256.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/icons/favicon-512x512.png">
+
+<!-- Apple Touch Icon (iOS PWA / home screen) -->
+<link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+
+<!-- Shortcut icon (legacy support for IE / old browsers) -->
+<link rel="shortcut icon" href="/icons/favicon.ico" type="image/x-icon">
+
+<link rel="manifest" href="manifest.json">
+
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/service-worker.js')
+      .then(() => console.log("Service Worker Registered"))
+      .catch(err => console.error("SW registration failed:", err));
+  }
+</script>
+
+  <!-- ✅ Google AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5847677612423434"
+    crossorigin="anonymous"></script>
+
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Arial', sans-serif;
+      background: linear-gradient(135deg, #001f3f, #007bff);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      height: 100vh;
+      color: #fff;
+    }
+
+    .auth-container {
+      background: rgba(0, 0, 0, 0.6);
+      padding: 40px;
+      border-radius: 15px;
+      text-align: center;
+      width: 90%;
+      max-width: 400px;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+    }
+
+    h1 {
+      color: #1db9ff;
+      font-size: 2.2rem;
+      margin-bottom: 10px;
+    }
+
+    p {
+      font-size: 1rem;
+      color: #ddd;
+      margin-bottom: 25px;
+    }
+
+    .oauth-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 15px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 1rem;
+      transition: transform 0.2s;
+    }
+
+    .oauth-btn img {
+      width: 24px;
+      height: 24px;
+      margin-right: 10px;
+    }
+
+    .oauth-btn:hover {
+      transform: translateY(-2px);
+    }
+
+    .google { background-color: #fff; color: #000; }
+    .discord { background-color: #5865f2; color: #fff; }
+    .facebook { background-color: #1877f2; color: #fff; }
+
+    footer {
+      margin-top: 40px;
+      font-size: 0.85rem;
+      color: #bbb;
+    }
+
+    footer a {
+      color: #1db9ff;
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ✅ AdSense Banner -->
+  <ins class="adsbygoogle"
+       style="display:block; margin-bottom: 20px;"
+       data-ad-client="ca-pub-5847677612423434"
+       data-ad-slot="7864868911"
+       data-ad-format="auto"></ins>
+  <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+
+  <div class="auth-container">
+    <h1>Welcome to Omevo</h1>
+    <p>Meet new people instantly — sign in to continue</p>
+
+    <!-- OAuth Buttons -->
+    <button class="oauth-btn google" onclick="login('google')">
+      <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google"/>
+      Sign in with Google
+    </button>
+
+    <button class="oauth-btn discord" onclick="login('discord')">
+      <img src="https://www.svgrepo.com/show/353655/discord-icon.svg" alt="Discord"/>
+      Sign in with Discord
+    </button>
+
+
+
+    <footer>
+      <p>By signing in, you agree to our <a href="terms.html">Terms</a> & <a href="priv.html">Privacy Policy</a></p>
+    </footer>
+  </div>
+
+  <script>
+    function login(provider) {
+      // Redirect to backend OAuth route
+      const backendURL = "https://term-2gkk.onrender.com";
+      window.location.href = `${backendURL}/auth/${provider}`;
+    }
+  </script>
+
+</body>
+</html>
