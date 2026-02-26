@@ -1,0 +1,6 @@
+{
+  "appId": "com.omevo.app",
+  "appName": "Omevo",
+  "webDir": "www",
+  "bundledWebRuntime": false
+}
