@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Signing you in...</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    body {
+      background: #0b1f3a;
+      color: white;
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <div>
+    <h2>Signing you in...</h2>
+    <p>Please wait</p>
+  </div>
+
+  <script>
+    const backendURL = "https://term-production-bf65.up.railway.app";
+
+    async function handleAuth() {
+      try {
+        // Check if session exists
+        const res = await fetch(`${backendURL}/auth/me`, {
+          credentials: "include"
+        });
+
+        if (!res.ok) throw new Error("Not authenticated");
+
+        const data = await res.json();
+
+        if (data.loggedIn) {
+          // ✅ success → go to chat
+          window.location.href = "/aachat.html";
+        } else {
+          throw new Error("Login failed");
+        }
+
+      } catch (err) {
+        console.error(err);
+        alert("Login failed. Try again.");
+        window.location.href = "/";
+      }
+    }
+
+    handleAuth();
+  </script>
+
+</body>
+</html>
