@@ -2054,6 +2054,7 @@ async function requestPermissions() {
   console.error("getUserMedia failed:", err);
 
   showToast("Camera & microphone permission required", "error");
+ }
 }
 
 async function getDevicesSafe() {
@@ -2448,7 +2449,9 @@ async function selectCamera(deviceId) {
           const data = await response.json();
 
           if (data.ok) {
-            state.user.age_verified = true;
+            if (state && state.user) {
+  state.user.age_verified = true;
+}
             document.getElementById("ageVerification").style.display = "none";
             showToast("Age verified successfully", "success");
           } else {
@@ -2699,7 +2702,8 @@ async function selectCamera(deviceId) {
       }
 
       function updatePartnerInfo(data) {
-        document.getElementById("partnerName").textContent = data.username || data.displayName || "Stranger";
+        document.getElementById("partnerName").textContent =
+  (data && (data.username || data.displayName)) || "Stranger";
         document.getElementById("partnerLocation").textContent = data.location || "Unknown";
         document.getElementById("partnerGender").textContent = data.gender || "Unknown";
 
