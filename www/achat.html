@@ -1416,8 +1416,12 @@
         </div>
 
         <div class="permission-buttons">
-          <button class="permission-btn secondary" onclick="denyPermissions()">Maybe Later</button>
-          <button class="permission-btn primary" onclick="requestPermissions()">Allow Access</button>
+          <button class="permission-btn secondary" onclick="denyPermissions()">
+  Maybe Later
+</button>
+<button class="permission-btn primary" onclick="requestPermissions()">
+  Allow Access
+</button>
         </div>
       </div>
     </div>
@@ -2029,32 +2033,40 @@ async function requestPermissions() {
   allowBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Requesting...';
 
   try {
-  // Request camera + mic FIRST (must be triggered by user click)
-  mediaStream = await navigator.mediaDevices.getUserMedia({
-    video: true,
-    audio: true,
-  });
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
 
-  // Attach preview
-  const localVideo = document.getElementById("localVideo");
+    const localVideo = document.getElementById("localVideo");
 
-  if ("srcObject" in localVideo) {
-    localVideo.srcObject = mediaStream;
-  } else {
-    localVideo.src = window.URL.createObjectURL(mediaStream);
+    if ("srcObject" in localVideo) {
+      localVideo.srcObject = mediaStream;
+    } else {
+      localVideo.src = window.URL.createObjectURL(mediaStream);
+    }
+
+    localVideo.muted = true;
+    await localVideo.play();
+
+    permissionsGranted = true;
+
+    // ✅ ADD THESE LINES 👇
+    document.getElementById("permissionOverlay").classList.add("hidden");
+    document.getElementById("loadingScreen").classList.remove("hidden");
+
+    await getDevicesSafe(); // optional but recommended
+
+    await initializeApp(); // 🔥 THIS IS CRITICAL
+
+  } catch (err) {
+    console.error("getUserMedia failed:", err);
+    showToast("Camera & microphone permission required", "error");
+
+    allowBtn.disabled = false;
+    denyBtn.disabled = false;
+    allowBtn.innerHTML = "Allow Access";
   }
-
-  // iOS Safari requires play() after setting stream
-  localVideo.muted = true;
-  await localVideo.play();
-
-  permissionsGranted = true;
-
-} catch (err) {
-  console.error("getUserMedia failed:", err);
-
-  showToast("Camera & microphone permission required", "error");
- }
 }
 
 async function getDevicesSafe() {
@@ -2064,48 +2076,34 @@ async function getDevicesSafe() {
     availableCameras = devices.filter(d => d.kind === "videoinput");
     availableMicrophones = devices.filter(d => d.kind === "audioinput");
 
-  } catch (err) {
-    console.warn("Device enumeration not supported (iOS Safari)");
+    const deviceSelector = document.getElementById("deviceSelector");
+    deviceSelector.innerHTML = "";
+
+    const defaultOption = document.createElement("div");
+    defaultOption.className = "device-option selected";
+    defaultOption.dataset.deviceId = "";
+    defaultOption.innerHTML = '<i class="fas fa-video"></i><span>Default Camera</span>';
+    deviceSelector.appendChild(defaultOption);
+
+    availableCameras.forEach((camera, index) => {
+      if (index > 0) {
+        const option = document.createElement("div");
+        option.className = "device-option";
+        option.dataset.deviceId = camera.deviceId;
+
+        const label = camera.label || `Camera ${index + 1}`;
+        option.innerHTML = `<i class="fas fa-video"></i><span>${label}</span>`;
+
+        option.addEventListener("click", () => selectCamera(camera.deviceId));
+        deviceSelector.appendChild(option);
+      }
+    });
+
+    defaultOption.addEventListener("click", () => selectCamera(""));
+  } catch (error) {
+    console.error("Error getting devices:", error);
   }
 }
-
-          // Get all audio devices
-          const audioDevices = await navigator.mediaDevices.enumerateDevices();
-          availableMicrophones = audioDevices.filter((device) => device.kind === "audioinput");
-
-          // Populate device selector
-          const deviceSelector = document.getElementById("deviceSelector");
-          deviceSelector.innerHTML = "";
-
-          // Add default option
-          const defaultOption = document.createElement("div");
-          defaultOption.className = "device-option selected";
-          defaultOption.dataset.deviceId = "";
-          defaultOption.innerHTML = '<i class="fas fa-video"></i><span>Default Camera</span>';
-          deviceSelector.appendChild(defaultOption);
-
-          // Add other cameras
-          availableCameras.forEach((camera, index) => {
-            if (index > 0) {
-              // Skip the first one as it's the default
-              const option = document.createElement("div");
-              option.className = "device-option";
-              option.dataset.deviceId = camera.deviceId;
-
-              const label = camera.label || `Camera ${index + 1}`;
-              option.innerHTML = `<i class="fas fa-video"></i><span>${label}</span>`;
-
-              option.addEventListener("click", () => selectCamera(camera.deviceId));
-              deviceSelector.appendChild(option);
-            }
-          });
-
-          // Add click event to default option
-          defaultOption.addEventListener("click", () => selectCamera(""));
-        } catch (error) {
-          console.error("Error getting devices:", error);
-        }
-      }
 
 async function selectCamera(deviceId) {
   try {
@@ -2703,7 +2701,7 @@ async function selectCamera(deviceId) {
 
       function updatePartnerInfo(data) {
         document.getElementById("partnerName").textContent =
-  (data && (data.username || data.displayName)) || "Stranger";
+  data?.username || data?.displayName || "Stranger";
         document.getElementById("partnerLocation").textContent = data.location || "Unknown";
         document.getElementById("partnerGender").textContent = data.gender || "Unknown";
 
@@ -3439,6 +3437,12 @@ async function selectCamera(deviceId) {
         }
       }
 
+document.querySelector(".permission-btn.primary")
+  .addEventListener("click", requestPermissions);
+
+document.querySelector(".permission-btn.secondary")
+  .addEventListener("click", denyPermissions);
+
       // Initialize app
       init();
 
@@ -3449,6 +3453,9 @@ async function selectCamera(deviceId) {
           e.returnValue = "";
         }
       });
+
+window.requestPermissions = requestPermissions;
+window.denyPermissions = denyPermissions;
     </script>
   </body>
 </html>
