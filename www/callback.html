@@ -25,36 +25,51 @@
     <p>Please wait</p>
   </div>
 
-  <script>
-    const backendURL = "https://term-production-bf65.up.railway.app";
+<script>
+  const backendURL = "https://term-production-bf65.up.railway.app";
 
-    async function handleAuth() {
-      try {
-        // Check if session exists
-        const res = await fetch(`${backendURL}/auth/me`, {
-          credentials: "include"
-        });
+  function getTokenFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("token");
+  }
 
-        if (!res.ok) throw new Error("Not authenticated");
+  async function handleAuth() {
+    try {
+      const token = getTokenFromURL();
 
-        const data = await res.json();
-
-        if (data.loggedIn) {
-          // ✅ success → go to chat
-          window.location.href = "/achat.html";
-        } else {
-          throw new Error("Login failed");
-        }
-
-      } catch (err) {
-        console.error(err);
-        alert("Login failed. Try again.");
-        window.location.href = "/";
+      if (!token) {
+        throw new Error("No token found");
       }
-    }
 
-    handleAuth();
-  </script>
+      // ✅ store token
+      localStorage.setItem("token", token);
+
+      // ✅ verify token with backend
+      const res = await fetch(`${backendURL}/auth/me`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      if (!res.ok) throw new Error("Auth failed");
+
+      const data = await res.json();
+
+      if (data.authenticated) {
+        window.location.href = "/achat.html";
+      } else {
+        throw new Error("Login failed");
+      }
+
+    } catch (err) {
+      console.error(err);
+      alert("Login failed. Try again.");
+      window.location.href = "/";
+    }
+  }
+
+  handleAuth();
+</script>
 
 </body>
 </html>
