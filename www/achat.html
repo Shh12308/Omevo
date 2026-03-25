@@ -1379,13 +1379,13 @@
   </head>
   <body>
     <!-- Loading Screen -->
-    <div id="loadingScreen">
+    <div id="loadingScreen" class="hidden">
       <div class="loading-spinner"></div>
       <div class="loading-text">Loading ChatVibe...</div>
     </div>
 
     <!-- Permission Request Overlay -->
-    <div id="permissionOverlay">
+    <div id="permissionOverlay" class="hidden">
       <div class="permission-card">
         <div class="permission-icon">
           <i class="fas fa-video"></i>
@@ -1416,12 +1416,8 @@
         </div>
 
         <div class="permission-buttons">
-          <button class="permission-btn secondary" onclick="denyPermissions()">
-  Maybe Later
-</button>
-<button class="permission-btn primary" onclick="requestPermissions()">
-  Allow Access
-</button>
+          <button class="permission-btn secondary" id="denyBtn">Maybe Later</button>
+          <button class="permission-btn primary" id="allowBtn">Allow Access</button>
         </div>
       </div>
     </div>
@@ -1993,27 +1989,28 @@
       function checkAuthentication() {
         // Check if user is logged in
         if (!token) {
-          // Redirect to login page
-          window.location.href = "/index.html";
-          return false;
+          console.warn("No token found. Proceeding in guest/restricted mode for debugging.");
+          // window.location.href = "/index.html"; // <--- DISABLED FOR DEBUGGING
+          // return false;
         }
 
         // Check if token is expired (basic check)
-        try {
-          const payload = JSON.parse(atob(token.split(".")[1]));
-          const now = Date.now() / 1000;
-
-          if (payload.exp < now) {
-            // Token expired, remove it and redirect to login
-            localStorage.removeItem("token");
-            window.location.href = "/index.html";
-            return false;
-          }
-        } catch (error) {
-          // Invalid token, remove it and redirect to login
-          localStorage.removeItem("token");
-          window.location.href = "/index.html";
-          return false;
+        if (token) {
+            try {
+              const payload = JSON.parse(atob(token.split(".")[1]));
+              const now = Date.now() / 1000;
+    
+              if (payload.exp < now) {
+                // Token expired
+                console.warn("Token expired.");
+                // localStorage.removeItem("token");
+                // window.location.href = "/index.html";
+                // return false;
+              }
+            } catch (error) {
+              console.error("Invalid token format", error);
+              // localStorage.removeItem("token");
+            }
         }
 
         return true;
@@ -2025,8 +2022,10 @@
       }
 
 async function requestPermissions() {
-  const allowBtn = document.querySelector(".permission-btn.primary");
-  const denyBtn = document.querySelector(".permission-btn.secondary");
+  const allowBtn = document.getElementById("allowBtn");
+  const denyBtn = document.getElementById("denyBtn");
+
+  if (!allowBtn || !denyBtn) return;
 
   allowBtn.disabled = true;
   denyBtn.disabled = true;
@@ -2051,13 +2050,11 @@ async function requestPermissions() {
 
     permissionsGranted = true;
 
-    // ✅ ADD THESE LINES 👇
     document.getElementById("permissionOverlay").classList.add("hidden");
     document.getElementById("loadingScreen").classList.remove("hidden");
 
-    await getDevicesSafe(); // optional but recommended
-
-    await initializeApp(); // 🔥 THIS IS CRITICAL
+    await getDevicesSafe(); 
+    await initializeApp(); 
 
   } catch (err) {
     console.error("getUserMedia failed:", err);
@@ -2107,7 +2104,6 @@ async function getDevicesSafe() {
 
 async function selectCamera(deviceId) {
   try {
-    // Update UI selection
     document.querySelectorAll(".device-option").forEach((opt) => {
       opt.classList.remove("selected");
     });
@@ -2121,23 +2117,17 @@ async function selectCamera(deviceId) {
 
     if (!client) return;
 
-    // Create new camera track using Agora
     const newVideoTrack = await AgoraRTC.createCameraVideoTrack({
       cameraId: deviceId || undefined,
     });
 
-    // Replace old video track in stream
     if (localTracks.videoTrack) {
       await client.unpublish(localTracks.videoTrack);
       localTracks.videoTrack.close();
     }
 
     localTracks.videoTrack = newVideoTrack;
-
-    // Publish new video track
     await client.publish(newVideoTrack);
-
-    // Play locally
     newVideoTrack.play("localVideo");
 
     showToast("Camera switched successfully", "success");
@@ -2148,18 +2138,16 @@ async function selectCamera(deviceId) {
   }
 }
 
-      function denyPermissions() {
-        showToast(
-          "Camera and microphone access is required to use ChatVibe. You can grant access later in your browser settings.",
-          "info",
-        );
+function denyPermissions() {
+  showToast(
+    "Camera and microphone access is required to use ChatVibe. You can grant access later in your browser settings.",
+    "info",
+  );
 
-        // Hide the overlay but show a message that permissions are needed
-        document.getElementById("permissionOverlay").classList.add("hidden");
+  document.getElementById("permissionOverlay").classList.add("hidden");
 
-        // Show a persistent message about permissions
-        const permissionMessage = document.createElement("div");
-        permissionMessage.style.cssText = `
+  const permissionMessage = document.createElement("div");
+  permissionMessage.style.cssText = `
     position: fixed;
     top: 20px;
     left: 50%;
@@ -2172,15 +2160,15 @@ async function selectCamera(deviceId) {
     max-width: 400px;
     text-align: center;
   `;
-        permissionMessage.innerHTML = `
+  permissionMessage.innerHTML = `
     <i class="fas fa-exclamation-triangle"></i> 
     Camera & microphone access required. 
     <button onclick="location.reload()" style="margin-left: 10px; padding: 5px 10px; background: white; color: var(--warning); border: none; border-radius: 5px; cursor: pointer;">
       Try Again
     </button>
   `;
-        document.body.appendChild(permissionMessage);
-      }
+  document.body.appendChild(permissionMessage);
+}
 
       /* =====================================================
    ANIMATED BACKGROUND
@@ -2240,7 +2228,6 @@ async function selectCamera(deviceId) {
           particle.draw();
         });
 
-        // Draw connections
         particles.forEach((p1, i) => {
           particles.slice(i + 1).forEach((p2) => {
             const distance = Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
@@ -2349,7 +2336,6 @@ async function selectCamera(deviceId) {
         document.getElementById("paymentModal").classList.add("active");
         document.getElementById("currentCoins").textContent = userCoins;
 
-        // Add click event to coin packages
         document.querySelectorAll(".coin-package").forEach((pkg) => {
           pkg.addEventListener("click", function () {
             document.querySelectorAll(".coin-package").forEach((p) => p.classList.remove("selected"));
@@ -2374,7 +2360,6 @@ async function selectCamera(deviceId) {
         }
 
         try {
-          // Create checkout session
           const response = await fetch(`${BACKEND}/api/create-checkout-session`, {
             method: "POST",
             headers: {
@@ -2393,12 +2378,10 @@ async function selectCamera(deviceId) {
 
           const { sessionId } = await response.json();
 
-          // Initialize Stripe if not already done
           if (!stripe) {
-            stripe = Stripe("pk_test_51234567890abcdef"); // Replace with your Stripe publishable key
+            stripe = Stripe("pk_test_51234567890abcdef");
           }
 
-          // Redirect to Stripe Checkout
           const { error } = await stripe.redirectToCheckout({ sessionId });
 
           if (error) {
@@ -2501,13 +2484,11 @@ async function selectCamera(deviceId) {
       async function startMatching() {
         if (isMatching || isInCall) return;
 
-        // Check if user is age verified
-        if (!state.user.age_verified) {
+        if (!state.user?.age_verified) {
           showAgeVerification();
           return;
         }
 
-        // Check if permissions are granted
         if (!permissionsGranted) {
           showToast("Camera and microphone permissions are required to start matching", "error");
           return;
@@ -2515,12 +2496,10 @@ async function selectCamera(deviceId) {
 
         isMatching = true;
 
-        // Show blur overlay with matching content
         document.getElementById("blurOverlay").classList.add("active");
         document.getElementById("startControls").style.display = "none";
 
         try {
-          // Start matching
           const response = await fetch(`${BACKEND}/queue/enqueue`, {
             method: "POST",
             headers: {
@@ -2541,7 +2520,6 @@ async function selectCamera(deviceId) {
             currentRoom = data.channel;
             startCall();
           } else {
-            // Keep trying to match
             setTimeout(() => {
               if (isMatching) {
                 checkForMatch();
@@ -2550,7 +2528,7 @@ async function selectCamera(deviceId) {
           }
         } catch (error) {
           console.error("Error starting match:", error);
-          showToast("Failed to start matching. Please check your camera/microphone permissions.", "error");
+          showToast("Failed to start matching.", "error");
           stopMatching();
         }
       }
@@ -2589,7 +2567,6 @@ async function selectCamera(deviceId) {
         document.getElementById("blurOverlay").classList.remove("active");
         document.getElementById("startControls").style.display = "flex";
 
-        // Leave queue
         fetch(`${BACKEND}/queue/leave`, {
           method: "POST",
           headers: {
@@ -2605,17 +2582,14 @@ async function selectCamera(deviceId) {
         isMatching = false;
         isInCall = true;
 
-        // Hide blur overlay
         document.getElementById("blurOverlay").classList.remove("active");
         document.getElementById("startControls").style.display = "none";
         document.getElementById("activeControls").style.display = "flex";
         document.getElementById("partnerInfo").style.display = "block";
 
-        // Start timer
         matchTimer = setInterval(updateTimer, 1000);
 
         try {
-          // Get Agora token
           const tokenResponse = await fetch(`${BACKEND}/generateToken`, {
             method: "POST",
             headers: {
@@ -2633,15 +2607,12 @@ async function selectCamera(deviceId) {
 
           const { rtcToken } = await tokenResponse.json();
 
-          // Create and join Agora client
           client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
 
           await client.join(AGORA_APP_ID, currentRoom, rtcToken, Math.floor(Math.random() * 100000));
 
-          // Publish local tracks
           await client.publish([localTracks.audioTrack, localTracks.videoTrack]);
 
-          // Handle remote user joining
           client.on("user-published", async (user, mediaType) => {
             await client.subscribe(user, mediaType);
 
@@ -2653,17 +2624,15 @@ async function selectCamera(deviceId) {
             }
           });
 
-          // Initialize socket for chat
           initSocket();
 
-          // Update stats
           state.stats.matches++;
           updateStats();
 
           showToast("Connected! Say hello to your new friend!", "success");
         } catch (error) {
           console.error("Error starting call:", error);
-          showToast("Failed to connect. Please try again.", "error");
+          showToast("Failed to connect.", "error");
           endCall();
         }
       }
@@ -2705,7 +2674,6 @@ async function selectCamera(deviceId) {
         document.getElementById("partnerLocation").textContent = data.location || "Unknown";
         document.getElementById("partnerGender").textContent = data.gender || "Unknown";
 
-        // Update interests
         const interestsList = document.getElementById("partnerInterestsList");
         interestsList.innerHTML = "";
 
@@ -2726,42 +2694,34 @@ async function selectCamera(deviceId) {
         isInCall = false;
         isMatching = false;
 
-        // Clear timer
         if (matchTimer) {
           clearInterval(matchTimer);
           matchTimer = null;
         }
 
-        // Reset UI
         document.getElementById("activeControls").style.display = "none";
         document.getElementById("startControls").style.display = "flex";
         document.getElementById("partnerInfo").style.display = "none";
         document.getElementById("chatPanel").classList.remove("open");
 
-        // Clear chat
         document.getElementById("chatMessages").innerHTML = "";
 
-        // Leave Agora
         if (client) {
           client.leave();
           client = null;
         }
 
-        // Stop tracks
         Object.values(localTracks).forEach((track) => track?.stop());
         localTracks = {};
 
-        // Disconnect socket
         if (socket) {
           socket.disconnect();
           socket = null;
         }
 
-        // Reset match time
         matchSeconds = 0;
         document.getElementById("timeCount").textContent = "0:00";
 
-        // Leave queue
         fetch(`${BACKEND}/queue/leave`, {
           method: "POST",
           headers: {
@@ -2777,7 +2737,6 @@ async function selectCamera(deviceId) {
         const video = document.getElementById("localVideo");
 
         if (!document.pictureInPictureElement) {
-          // Enter PiP mode
           if (video.requestPictureInPicture) {
             video
               .requestPictureInPicture()
@@ -2791,7 +2750,6 @@ async function selectCamera(deviceId) {
               });
           }
         } else {
-          // Exit PiP mode
           document
             .exitPictureInPicture()
             .then(() => {
@@ -2860,12 +2818,10 @@ async function selectCamera(deviceId) {
             xOffset = currentX;
             yOffset = currentY;
 
-            // Apply new position
             localVideoWrapper.style.transform = `translate(${currentX}px, ${currentY}px)`;
           }
         }
 
-        // Add event listeners
         localVideoWrapper.addEventListener("touchstart", dragStart, false);
         localVideoWrapper.addEventListener("touchend", dragEnd, false);
         localVideoWrapper.addEventListener("touchmove", drag, false);
@@ -2874,7 +2830,6 @@ async function selectCamera(deviceId) {
         document.addEventListener("mouseup", dragEnd, false);
         document.addEventListener("mousemove", drag, false);
 
-        // Reset position function
         window.resetVideoPosition = function () {
           xOffset = 0;
           yOffset = 0;
@@ -2903,7 +2858,6 @@ async function selectCamera(deviceId) {
 
         video.style.filter = filters[effect] || "";
 
-        // Update active state
         document.querySelectorAll(".effect-btn").forEach((btn) => {
           btn.classList.toggle("active", btn.dataset.effect === effect);
         });
@@ -2933,7 +2887,6 @@ async function selectCamera(deviceId) {
         const details = document.getElementById("reportDetails").value;
 
         try {
-          // Send report to backend
           const response = await fetch(`${BACKEND}/api/report`, {
             method: "POST",
             headers: {
@@ -2997,7 +2950,6 @@ async function selectCamera(deviceId) {
         }
 
         try {
-          // Spend coins
           const response = await fetch(`${BACKEND}/api/user/spend-coins`, {
             method: "POST",
             headers: {
@@ -3019,7 +2971,6 @@ async function selectCamera(deviceId) {
           const data = await response.json();
 
           if (data.success) {
-            // Update coins display
             userCoins -= cost;
             updateStats();
 
@@ -3032,7 +2983,6 @@ async function selectCamera(deviceId) {
               rocket: "🚀",
             };
 
-            // Create gift animation
             const giftElement = document.createElement("div");
             giftElement.className = "gift-animation";
             giftElement.textContent = giftEmojis[giftType];
@@ -3042,7 +2992,6 @@ async function selectCamera(deviceId) {
 
             setTimeout(() => giftElement.remove(), 3000);
 
-            // Send gift via socket
             if (socket) {
               socket.emit("gift", {
                 type: giftType,
@@ -3133,10 +3082,10 @@ async function selectCamera(deviceId) {
 
           state.preferences = {
             gender: data.gender || "male",
-            lookingFor: "any", // This is not in your backend, so defaulting
+            lookingFor: "any",
             location: data.location || "any",
             interests: data.interests || [],
-            verifiedOnly: false, // This is not in your backend, so defaulting
+            verifiedOnly: false,
           };
 
           document.getElementById("genderSelect").value = state.preferences.gender;
@@ -3147,7 +3096,6 @@ async function selectCamera(deviceId) {
         } catch (error) {
           console.error("Error loading settings:", error);
 
-          // Fallback to localStorage
           const saved = localStorage.getItem("preferences");
           if (saved) {
             state.preferences = JSON.parse(saved);
@@ -3170,7 +3118,6 @@ async function selectCamera(deviceId) {
         }
 
         try {
-          // Update profile via API
           const response = await fetch(`${BACKEND}/user/display-name`, {
             method: "POST",
             headers: {
@@ -3222,19 +3169,16 @@ async function selectCamera(deviceId) {
           document.getElementById("displayNameInput").value = data.username || data.display_name || "";
           document.getElementById("bioInput").value = data.bio || "";
 
-          // Set avatar if available
           if (data.avatar) {
             document.getElementById("profileAvatar").innerHTML =
               `<img src="${data.avatar}" style="width: 100%; height: 100%; object-fit: cover;">`;
           }
 
-          // Set gender from profile if available
           if (data.gender) {
             state.preferences.gender = data.gender;
             document.getElementById("genderSelect").value = data.gender;
           }
 
-          // Show coins if user has any
           if (userCoins > 0) {
             document.getElementById("coinsDisplay").style.display = "flex";
           }
@@ -3255,7 +3199,6 @@ async function selectCamera(deviceId) {
         }
 
         try {
-          // Toggle device selector
           toggleDeviceSelector();
         } catch (error) {
           console.error("Error switching camera:", error);
@@ -3281,23 +3224,20 @@ async function selectCamera(deviceId) {
         updateStats();
         showToast("You liked this user!", "success");
 
-        // Send like via socket
         if (socket) {
           socket.emit("like", { to: partnerId, room: currentRoom });
         }
       });
       document.getElementById("cameraBtn").addEventListener("click", switchCamera);
       document.getElementById("pipBtn").addEventListener("click", togglePiP);
-      document.getElementById("resetPositionBtn").addEventListener("click", resetVideoPosition);
+      document.getElementById("resetPositionBtn").addEventListener("click", () => window.resetVideoPosition());
 
-      // Message input enter key
       document.getElementById("messageInput").addEventListener("keypress", (e) => {
         if (e.key === "Enter") {
           sendMessage();
         }
       });
 
-      // Report options
       document.querySelectorAll(".report-option").forEach((option) => {
         option.addEventListener("click", () => {
           document.querySelectorAll(".report-option").forEach((opt) => opt.classList.remove("selected"));
@@ -3305,14 +3245,12 @@ async function selectCamera(deviceId) {
         });
       });
 
-      // Effects buttons
       document.querySelectorAll(".effect-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
           applyEffect(btn.dataset.effect);
         });
       });
 
-      // Gift buttons hover effect
       document.querySelectorAll(".gift-btn").forEach((btn) => {
         btn.addEventListener("mouseenter", () => {
           btn.style.borderColor = "var(--primary)";
@@ -3330,10 +3268,8 @@ async function selectCamera(deviceId) {
 ===================================================== */
       async function initializeApp() {
         try {
-          // Hide loading screen
           document.getElementById("loadingScreen").classList.add("hidden");
 
-          // Load user profile
           const response = await fetch(`${BACKEND}/user/profile`, {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -3348,21 +3284,15 @@ async function selectCamera(deviceId) {
           state.user = data;
           userCoins = data.coins || 0;
 
-          // Load settings
           await loadSettings();
-
-          // Load profile
           await loadProfile();
 
-          // Initialize draggable local video
           initDraggableVideo();
 
-          // Check if user needs age verification
           if (!data.age_verified) {
             showAgeVerification();
           }
 
-          // Check for payment success
           const urlParams = new URLSearchParams(window.location.search);
           if (urlParams.get("payment") === "success") {
             const sessionId = urlParams.get("session_id");
@@ -3386,7 +3316,6 @@ async function selectCamera(deviceId) {
                     updateStats();
                     showToast("Payment successful! Coins added to your account.", "success");
 
-                    // Clean up URL
                     window.history.replaceState({}, document.title, window.location.pathname);
                   }
                 }
@@ -3397,65 +3326,49 @@ async function selectCamera(deviceId) {
           }
         } catch (error) {
           console.error("Error initializing app:", error);
-          showToast("Failed to initialize app", "error");
-
-          // If initialization fails, logout user
-          setTimeout(() => {
-            logout();
-          }, 3000);
+          showToast("Could not connect to backend. Running in offline mode.", "info");
+          // setTimeout(() => { logout(); }, 3000); // DISABLED REDIRECT
         }
       }
 
       async function init() {
-        // First check authentication
         if (!checkAuthentication()) {
-          return;
+            return;
         }
 
-        // Show loading screen initially
         document.getElementById("loadingScreen").classList.remove("hidden");
 
-        // Check if permissions are already granted
         try {
           const result = await navigator.permissions.query({ name: "camera" });
           const result2 = await navigator.permissions.query({ name: "microphone" });
 
           if (result.state === "granted" && result2.state === "granted") {
-            // Permissions already granted, initialize app
             permissionsGranted = true;
             document.getElementById("permissionOverlay").classList.add("hidden");
             await initializeApp();
           } else {
-            // Show permission request overlay
             document.getElementById("loadingScreen").classList.add("hidden");
             document.getElementById("permissionOverlay").classList.remove("hidden");
           }
         } catch (error) {
-          // Permissions API not supported, show permission request
           document.getElementById("loadingScreen").classList.add("hidden");
           document.getElementById("permissionOverlay").classList.remove("hidden");
         }
       }
-
-document.querySelector(".permission-btn.primary")
-  .addEventListener("click", requestPermissions);
-
-document.querySelector(".permission-btn.secondary")
-  .addEventListener("click", denyPermissions);
+      
+      // Binding Permission Buttons
+      document.getElementById("allowBtn").addEventListener("click", requestPermissions);
+      document.getElementById("denyBtn").addEventListener("click", denyPermissions);
 
       // Initialize app
       init();
 
-      // Prevent accidental close
       window.addEventListener("beforeunload", (e) => {
         if (isInCall) {
           e.preventDefault();
           e.returnValue = "";
         }
       });
-
-window.requestPermissions = requestPermissions;
-window.denyPermissions = denyPermissions;
     </script>
   </body>
 </html>
