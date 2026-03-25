@@ -16,6 +16,19 @@
       height: 100vh;
       text-align: center;
     }
+    .spinner {
+      margin-top: 20px;
+      border: 4px solid rgba(255,255,255,0.2);
+      border-top: 4px solid white;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
@@ -23,46 +36,52 @@
   <div>
     <h2>Signing you in...</h2>
     <p>Please wait</p>
+    <div class="spinner"></div>
   </div>
 
 <script>
   const backendURL = "https://term-production-bf65.up.railway.app";
 
   function getTokenFromURL() {
-    const params = new URLSearchParams(window.location.search);
-    return params.get("token");
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("token") || null;
+    } catch {
+      return null;
+    }
   }
 
   async function handleAuth() {
+    const token = getTokenFromURL();
+
+    if (!token) {
+      console.error("No token found in URL");
+      alert("Login failed: missing token.");
+      window.location.href = "/";
+      return;
+    }
+
+    // store token
+    localStorage.setItem("token", token);
+
     try {
-      const token = getTokenFromURL();
-
-      if (!token) {
-        throw new Error("No token found");
-      }
-
-      // ✅ store token
-      localStorage.setItem("token", token);
-
-      // ✅ verify token with backend
       const res = await fetch(`${backendURL}/auth/me`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+        headers: { Authorization: `Bearer ${token}` }
       });
 
-      if (!res.ok) throw new Error("Auth failed");
+      if (!res.ok) throw new Error(`Auth request failed: ${res.status}`);
 
       const data = await res.json();
 
-      if (data.authenticated) {
+      if (data && data.authenticated) {
+        // success → redirect
         window.location.href = "/achat.html";
       } else {
-        throw new Error("Login failed");
+        throw new Error("Authentication failed");
       }
 
     } catch (err) {
-      console.error(err);
+      console.error("Error verifying token:", err);
       alert("Login failed. Try again.");
       window.location.href = "/";
     }
