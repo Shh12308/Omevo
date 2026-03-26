@@ -1632,6 +1632,8 @@
 ===================================================== */
       const BACKEND = "https://term-2gkk.onrender.com";
       const AGORA_APP_ID = "0f9094ed4a8e4dea934059b0ea8b5182";
+      // REPLACE WITH YOUR ACTUAL STRIPE PUBLISHABLE KEY
+      const STRIPE_PUBLISHABLE_KEY = "pk_test_your_stripe_key_here"; 
 
       let token = localStorage.getItem("token");
       let socket = null;
@@ -1765,9 +1767,6 @@
 ===================================================== */
       function checkAuthentication() {
         if (!token) {
-          // For demonstration, we create a dummy token or redirect.
-          // In real usage, ensure you have a valid JWT.
-          // window.location.href = "/index.html"; 
           console.warn("No token found. Proceeding in guest/dev mode.");
           return true; 
         }
@@ -1779,7 +1778,7 @@
         window.location.href = "/index.html";
       }
 
-      // THE FIX: Use Agora to request permissions and create tracks
+      // UPDATE: Set video quality to 720p_3 (1280x720, 30fps)
       async function requestPermissions() {
         const allowBtn = document.querySelector(".permission-btn.primary");
         const denyBtn = document.querySelector(".permission-btn.secondary");
@@ -1788,9 +1787,18 @@
         allowBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Requesting...';
 
         try {
-          // 1. Create Agora Tracks (this triggers the browser permission prompt)
+          // 1. Create Agora Tracks with 720p Configuration
           localTracks.audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
-          localTracks.videoTrack = await AgoraRTC.createCameraVideoTrack();
+          
+          // Using encoderConfig for 720p @ 30fps
+          localTracks.videoTrack = await AgoraRTC.createCameraVideoTrack({
+            encoderConfig: {
+              width: 1280,
+              height: 720,
+              frameRate: 30,
+              bitrate: 1710
+            }
+          });
 
           // 2. Play video locally
           localTracks.videoTrack.play("localVideo");
@@ -1819,7 +1827,6 @@
       function denyPermissions() {
         showToast("Camera and microphone access is required.", "info");
         document.getElementById("permissionOverlay").classList.add("hidden");
-        // Optionally show a persistent message
       }
 
       async function getDevicesSafe() {
@@ -1846,7 +1853,6 @@
         if (!localTracks.videoTrack) return;
         
         try {
-            // Switch device using Agora
             await localTracks.videoTrack.setDevice(deviceId);
             showToast("Camera switched", "success");
         } catch(e) {
@@ -1868,6 +1874,32 @@
       function toggleDeviceSelector() { document.getElementById("deviceSelector").classList.toggle("active"); }
 
       /* =====================================================
+   SOCKET CONNECTION (FIXED)
+===================================================== */
+      function initSocket() {
+        if (socket) return;
+        socket = io(BACKEND);
+        
+        socket.on("connect", () => {
+            console.log("Socket connected");
+            if(token) socket.emit("auth", { token });
+        });
+
+        socket.on("match_found", (data) => {
+            console.log("Match found event received", data);
+            if (isMatching && !isInCall) {
+                partnerId = data.peerId;
+                currentRoom = data.channel;
+                updatePartnerInfo(data.peerInfo);
+                startCall();
+            }
+        });
+
+        socket.on("message", (data) => addMessageToChat(data.text, false));
+        socket.on("partner-left", () => { showToast("Partner left", "info"); endCall(); });
+      }
+
+      /* =====================================================
    MATCHING SYSTEM
 ===================================================== */
       async function startMatching() {
@@ -1877,6 +1909,9 @@
           document.getElementById("permissionOverlay").classList.remove("hidden");
           return;
         }
+
+        // Ensure socket is connected before matching
+        initSocket();
 
         isMatching = true;
         document.getElementById("blurOverlay").classList.add("active");
@@ -1897,7 +1932,8 @@
             currentRoom = data.channel;
             startCall();
           } else {
-            setTimeout(() => { if (isMatching) checkForMatch(); }, 2000);
+            // Polling fallback
+            setTimeout(() => { if (isMatching) checkForMatch(); }, 3000);
           }
         } catch (error) {
           console.error(error);
@@ -1907,19 +1943,21 @@
       }
 
       async function checkForMatch() {
-        if (!isMatching) return;
+        if (!isMatching || isInCall) return;
         try {
           const response = await fetch(`${BACKEND}/queue/check`, { headers: { Authorization: `Bearer ${token}` } });
           const data = await response.json();
           if (data.matched) {
             partnerId = data.peerId;
             currentRoom = data.channel;
+            updatePartnerInfo(data.peerInfo);
             startCall();
           } else {
-            setTimeout(checkForMatch, 2000);
+            setTimeout(checkForMatch, 3000);
           }
         } catch (e) {
-          setTimeout(checkForMatch, 2000);
+          console.error("Polling error", e);
+          setTimeout(checkForMatch, 3000);
         }
       }
 
@@ -1960,7 +1998,6 @@
           const uid = await client.join(AGORA_APP_ID, currentRoom, rtcToken, Math.floor(Math.random() * 100000));
 
           // 4. Publish Existing Tracks (Created during permission request)
-          // Check if tracks exist, if not create them (fallback)
           if (!localTracks.audioTrack) localTracks.audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
           if (!localTracks.videoTrack) localTracks.videoTrack = await AgoraRTC.createCameraVideoTrack();
 
@@ -1971,7 +2008,7 @@
             await client.subscribe(user, mediaType);
             if (mediaType === "video") {
                 document.getElementById("remoteVideo").srcObject = user.videoTrack.getMediaStreamTrack();
-                user.videoTrack.play("remoteVideo"); // Agora helper to play
+                user.videoTrack.play("remoteVideo"); 
             }
             if (mediaType === "audio") {
                 user.audioTrack.play();
@@ -1984,7 +2021,6 @@
               }
           });
 
-          initSocket();
           state.stats.matches++;
           updateStats();
           showToast("Connected!", "success");
@@ -1996,25 +2032,11 @@
         }
       }
 
-      function initSocket() {
-        if (socket) return;
-        socket = io(BACKEND);
-        socket.emit("auth", { token });
-        socket.on("message", (data) => addMessageToChat(data.text, false));
-        socket.on("partner-left", () => { showToast("Partner left", "info"); endCall(); });
-        socket.on("partner-info", (data) => updatePartnerInfo(data));
-        socket.on("match_found", (data) => {
-            if(isMatching) {
-                partnerId = data.peerId;
-                currentRoom = data.channel;
-                startCall();
-            }
-        });
-      }
-
       function updatePartnerInfo(data) {
+        if(!data) return;
         document.getElementById("partnerName").textContent = data?.username || "Stranger";
         document.getElementById("partnerLocation").textContent = data?.location || "Unknown";
+        // Update other fields if needed
       }
 
       function endCall() {
@@ -2085,15 +2107,167 @@
       function openPaymentModal() { openModal("paymentModal"); document.getElementById("currentCoins").textContent = userCoins; }
       function closePaymentModal() { closeModal("paymentModal"); }
 
-      async function submitReport() { showToast("Reported", "success"); closeReportModal(); endCall(); }
-      async function sendGift(type) { closeGiftsModal(); showToast("Gift sent!", "success"); }
-      async function purchaseCoins() { showToast("Redirecting to payment...", "info"); }
+      async function submitReport() { 
+        // Basic report logic
+        const selected = document.querySelector('.report-option.selected');
+        const reason = selected ? selected.dataset.reason : 'other';
+        const details = document.getElementById('reportDetails').value;
+        
+        if(socket) {
+            socket.emit('report_user', { reportedUserId: partnerId, reason, roomId: currentRoom });
+        }
+        showToast("Report submitted", "success"); 
+        closeReportModal(); 
+        endCall(); 
+      }
+      
+      async function sendGift(type) { 
+        // Deduct coins logic needed here
+        closeGiftsModal(); 
+        showToast("Gift sent!", "success"); 
+      }
+      
+      // FIX: Implemented Stripe Checkout
+      async function purchaseCoins() {
+        if (!selectedCoinPackage) {
+            showToast("Please select a package", "error");
+            return;
+        }
 
-      // Profile & Settings
-      async function saveSettings() { showToast("Settings saved", "success"); toggleSettings(); }
-      async function saveProfile() { showToast("Profile saved", "success"); }
-      async function loadProfile() { /* Fetch user data */ }
-      async function loadSettings() { /* Fetch settings */ }
+        try {
+            const response = await fetch(`${BACKEND}/api/create-checkout-session`, {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json", 
+                    "Authorization": `Bearer ${token}` 
+                },
+                body: JSON.stringify(selectedCoinPackage)
+            });
+
+            const data = await response.json();
+
+            if (data.sessionId) {
+                const stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
+                const { error } = await stripe.redirectToCheckout({ sessionId: data.sessionId });
+                
+                if (error) {
+                    showToast(error.message, "error");
+                }
+            } else {
+                showToast("Failed to initialize payment", "error");
+            }
+        } catch (err) {
+            console.error(err);
+            showToast("Payment error", "error");
+        }
+      }
+
+      /* =====================================================
+   PROFILE & PREFERENCES (FIXED)
+===================================================== */
+      async function loadProfile() {
+        if(!token) return;
+        try {
+            const response = await fetch(`${BACKEND}/user/profile`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if(response.ok) {
+                const user = await response.json();
+                state.user = user;
+                document.getElementById("profileName").textContent = user.username || "User";
+                document.getElementById("displayNameInput").value = user.username || "";
+                userCoins = user.coins || 0;
+                document.getElementById("coinsAmount").textContent = userCoins;
+                document.getElementById("coinsDisplay").style.display = "flex";
+            }
+        } catch(e) {
+            console.error("Failed to load profile", e);
+        }
+      }
+
+      async function saveProfile() {
+        const name = document.getElementById("displayNameInput").value;
+        if(!name) return;
+
+        try {
+            const response = await fetch(`${BACKEND}/user/display-name`, {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json", 
+                    "Authorization": `Bearer ${token}` 
+                },
+                body: JSON.stringify({ display_name: name })
+            });
+
+            if(response.ok) {
+                showToast("Profile updated!", "success");
+                state.user.username = name;
+                document.getElementById("profileName").textContent = name;
+            } else {
+                const err = await response.json();
+                showToast(err.error || "Failed", "error");
+            }
+        } catch(e) {
+            console.error(e);
+        }
+      }
+
+      async function loadSettings() {
+        if(!token) return;
+        try {
+            const response = await fetch(`${BACKEND}/api/user/preferences`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            if(response.ok) {
+                const prefs = await response.json();
+                document.getElementById("genderSelect").value = prefs.gender || "male";
+                document.getElementById("lookingForSelect").value = prefs.looking_for || "any";
+                document.getElementById("locationSelect").value = prefs.location || "any";
+                document.getElementById("interestsInput").value = (prefs.interests || []).join(", ");
+                state.preferences = prefs;
+            }
+        } catch(e) {
+            console.error("Failed to load settings", e);
+        }
+      }
+
+      async function saveSettings() {
+        const interests = document.getElementById("interestsInput").value
+            .split(",")
+            .map(i => i.trim())
+            .filter(i => i.length > 0);
+
+        const payload = {
+            gender: document.getElementById("genderSelect").value,
+            lookingFor: document.getElementById("lookingForSelect").value, 
+            location: document.getElementById("locationSelect").value,
+            interests: interests,
+            nickname: state.user?.username || "User" 
+        };
+
+        try {
+            const response = await fetch(`${BACKEND}/api/user/preferences`, {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json", 
+                    "Authorization": `Bearer ${token}` 
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if(response.ok) {
+                showToast("Settings saved!", "success");
+                state.preferences = payload;
+                toggleSettings(); 
+            } else {
+                const err = await response.json();
+                showToast(err.error || "Failed to save", "error");
+            }
+        } catch(e) {
+            console.error(e);
+            showToast("Error saving settings", "error");
+        }
+      }
 
       /* =====================================================
    DRAG FUNCTIONALITY
@@ -2135,16 +2309,25 @@
       async function initializeApp() {
           // Logic to run after permissions are granted
           initDraggableVideo();
+          initSocket(); // FIX: Initialize socket immediately
           await loadSettings();
           await loadProfile();
+          
+          // Handle coin package selection
+          document.querySelectorAll(".coin-package").forEach(pkg => {
+            pkg.addEventListener("click", function() {
+                document.querySelectorAll(".coin-package").forEach(p => p.classList.remove("selected"));
+                this.classList.add("selected");
+                selectedCoinPackage = {
+                    coins: this.dataset.coins,
+                    price: parseFloat(this.dataset.price)
+                };
+            });
+          });
       }
 
       async function init() {
         if (!checkAuthentication()) return;
-
-        // Check if we already have permission (e.g. cached)
-        // We will just show the permission overlay immediately to ensure user interaction
-        // which is required for getUserMedia/Agora tracks to work reliably.
         
         document.getElementById("loadingScreen").classList.add("hidden");
         document.getElementById("permissionOverlay").classList.remove("hidden");
