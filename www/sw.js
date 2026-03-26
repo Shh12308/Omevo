@@ -8,15 +8,15 @@ const ASSETS_TO_CACHE = [
   "/icons/icon-512.png"
 ];
 
+// Install - cache assets
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE))
   );
   self.skipWaiting();
 });
 
+// Activate - cleanup old caches
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -30,15 +30,30 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Network-first fetch strategy
+// Fetch - network-first with cache fallback
 self.addEventListener("fetch", (event) => {
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-        return response;
-      })
-      .catch(() => caches.match(event.request))
+    (async () => {
+      try {
+        const networkResponse = await fetch(event.request);
+        // Only cache valid responses
+        if (networkResponse && networkResponse.status === 200) {
+          const cache = await caches.open(CACHE_NAME);
+          cache.put(event.request, networkResponse.clone());
+        }
+        return networkResponse;
+      } catch (err) {
+        // Fallback to cache
+        const cachedResponse = await caches.match(event.request);
+        if (cachedResponse) return cachedResponse;
+
+        // Optional: fallback for navigation requests (SPA)
+        if (event.request.mode === "navigate") {
+          return caches.match("/index.html");
+        }
+
+        return new Response("Offline", { status: 503, statusText: "Offline" });
+      }
+    })()
   );
 });
