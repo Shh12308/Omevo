@@ -52,56 +52,44 @@
   }
 
   async function handleAuth() {
-    const code = getCodeFromURL();
+  const code = new URLSearchParams(window.location.search).get("code");
 
-    if (!code) {
-      console.error("No code found in URL");
-      alert("Login failed: missing code.");
-      window.location.href = "/";
-      return;
-    }
+  console.log("CODE:", code);
 
-    try {
-      // 🔥 Exchange code → token
-      const res = await fetch(`${backendURL}/auth/exchange`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ code })
-      });
-
-      if (!res.ok) throw new Error(`Exchange failed: ${res.status}`);
-
-      const data = await res.json();
-
-      if (!data.token) throw new Error("No token returned");
-
-      // ✅ Store token
-      localStorage.setItem("token", data.token);
-
-      // 🔍 Optional: verify token
-      const verifyRes = await fetch(`${backendURL}/auth/me`, {
-        headers: { Authorization: `Bearer ${data.token}` }
-      });
-
-      if (!verifyRes.ok) throw new Error("Token verification failed");
-
-      const user = await verifyRes.json();
-
-      if (user && user.authenticated) {
-        // ✅ SUCCESS
-        window.location.href = "/achat.html";
-      } else {
-        throw new Error("Authentication failed");
-      }
-
-    } catch (err) {
-      console.error("Auth error:", err);
-      alert("Login failed. Try again.");
-      window.location.href = "/";
-    }
+  if (!code) {
+    alert("Missing code");
+    return;
   }
+
+  try {
+    const res = await fetch(`${backendURL}/auth/exchange`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ code })
+    });
+
+    console.log("Exchange status:", res.status);
+
+    const text = await res.text();
+    console.log("Exchange raw response:", text);
+
+    const data = JSON.parse(text);
+
+    if (!data.token) {
+      throw new Error("No token in response");
+    }
+
+    localStorage.setItem("token", data.token);
+
+    window.location.href = "/achat.html";
+
+  } catch (err) {
+    console.error("FULL ERROR:", err);
+    alert("Login failed. Check console.");
+  }
+}
 
   handleAuth();
 </script>
