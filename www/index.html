@@ -113,14 +113,26 @@
   </div>
 
   <script>
-    const backendURL = "https://term-production-bf65.up.railway.app";
+  const backendURL = "https://term-production-bf65.up.railway.app";
 
-    function login(provider) {
-      // Redirect to backend OAuth endpoint
-      const redirectPath = encodeURIComponent("/callback.html");
-      window.location.href = `${backendURL}/auth/${provider}?redirect=${redirectPath}`;
+  function login(provider) {
+    const redirectPath = encodeURIComponent("/callback.html");
+    window.location.href = `${backendURL}/auth/${provider}?redirect=${redirectPath}`;
+  }
+
+  // 🔥 NEW: handle OAuth return (code in URL)
+  function handleOAuthReturn() {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+
+    if (code) {
+      console.log("OAuth code detected, redirecting to callback...");
+      window.location.href = `/callback.html?code=${code}`;
     }
-  </script>
+  }
+
+  handleOAuthReturn();
+</script>
 
 </body>
 </html>
