@@ -1611,6 +1611,14 @@
       const AGORA_APP_ID = "0f9094ed4a8e4dea934059b0ea8b5182";
       const STRIPE_PUBLISHABLE_KEY = "pk_test_your_stripe_key_here"; 
 
+      // Check URL for token first (from OAuth callback), then local storage
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlToken = urlParams.get('token');
+      if (urlToken) {
+          localStorage.setItem("token", urlToken);
+          window.history.replaceState({}, document.title, window.location.pathname); // Clean URL
+      }
+
       let token = localStorage.getItem("token");
       let socket = null;
       let client = null;
@@ -1627,10 +1635,11 @@
       let permissionsGranted = false;
       let availableCameras = [];
       let currentCameraIndex = 0;
-      let currentLayout = 'float'; // 'float' or 'split'
+      let currentLayout = 'float'; 
       let stripe = null;
       let selectedCoinPackage = null;
       let userCoins = 0;
+      let moderationInterval = null; // For sending video frames
 
       const state = {
         user: null,
@@ -1746,6 +1755,7 @@
       function checkAuthentication() {
         if (!token) {
           console.warn("No token found. Proceeding in guest/dev mode.");
+          // In a real app, you might redirect to login: window.location.href = '/login.html';
           return true; 
         }
         return true;
@@ -1753,7 +1763,7 @@
 
       function logout() {
         localStorage.removeItem("token");
-        window.location.href = "/index.html";
+        window.location.href = "/index.html"; // Or your login page
       }
 
       async function requestPermissions() {
@@ -1802,7 +1812,6 @@
         try {
             const devices = await AgoraRTC.getDevices();
             availableCameras = devices.filter(d => d.kind === 'videoinput');
-            // Set initial index
             const currentDeviceId = localTracks.videoTrack?.getMediaStreamTrack()?.getSettings()?.deviceId;
             if (currentDeviceId) {
                 const idx = availableCameras.findIndex(c => c.deviceId === currentDeviceId);
@@ -1817,7 +1826,6 @@
    CAMERA & LAYOUT CONTROLS
 ===================================================== */
       
-      // Smart Camera Switching (Front/Back)
       async function switchCamera() {
         if (!localTracks.videoTrack || availableCameras.length <= 1) {
             showToast("No other camera found", "info");
@@ -1825,37 +1833,24 @@
         }
 
         try {
-            // Calculate next index
             currentCameraIndex = (currentCameraIndex + 1) % availableCameras.length;
             const newDevice = availableCameras[currentCameraIndex];
-
-            // Switch device
             await localTracks.videoTrack.setDevice(newDevice.deviceId);
             showToast(`Switched to ${newDevice.label || 'Camera ' + (currentCameraIndex + 1)}`, "success");
 
-            // Smart Mirroring Logic:
-            // Usually 'back' or 'environment' cameras should NOT be mirrored.
-            // 'front' or 'user' cameras SHOULD be mirrored.
             const localVideoEl = document.getElementById("localVideo");
             const isBackCamera = newDevice.label.toLowerCase().includes("back") || 
                                  newDevice.label.toLowerCase().includes("environment");
             
-            if (isBackCamera) {
-                localVideoEl.style.transform = "scaleX(1)"; // Normal view for back camera
-            } else {
-                localVideoEl.style.transform = "scaleX(-1)"; // Mirror for front camera
-            }
-
+            localVideoEl.style.transform = isBackCamera ? "scaleX(1)" : "scaleX(-1)";
         } catch(e) {
             console.error("Switch camera error", e);
             showToast("Failed to switch camera", "error");
         }
       }
 
-      // Layout Toggle (Float vs Split)
       function toggleLayout() {
           const container = document.getElementById("videoContainer");
-          const localWrapper = document.getElementById("localVideoWrapper");
           
           if (currentLayout === 'float') {
               currentLayout = 'split';
@@ -1864,7 +1859,7 @@
           } else {
               currentLayout = 'float';
               container.classList.remove('split-mode');
-              resetVideoPosition(); // Ensure it snaps back to default float position
+              resetVideoPosition(); 
               showToast("Float Mode", "info");
           }
       }
@@ -1893,18 +1888,48 @@
             if(token) socket.emit("auth", { token });
         });
 
+        socket.on("authenticated", (data) => {
+            console.log("Socket authenticated", data.userId);
+        });
+
         socket.on("match_found", (data) => {
             console.log("Match found event received", data);
+            // Prevent double matching
             if (isMatching && !isInCall) {
                 partnerId = data.peerId;
                 currentRoom = data.channel;
                 updatePartnerInfo(data.peerInfo);
-                startCall();
+                startCall(data.channel, data.peerId);
             }
         });
 
-        socket.on("message", (data) => addMessageToChat(data.text, false));
-        socket.on("partner-left", () => { showToast("Partner left", "info"); endCall(); });
+        socket.on("peer_left", () => { 
+            showToast("Partner left", "info"); 
+            endCall(); 
+        });
+
+        socket.on("banned", (data) => {
+            showToast(`You have been banned: ${data.reason}`, "error", "Banned");
+            endCall();
+            logout(); // Force logout or redirect
+        });
+
+        socket.on("moderation_action", (data) => {
+            if(data.banned) {
+                showToast(data.reason, "error", "Banned by AI");
+                endCall();
+            }
+        });
+
+        socket.on("message", (data) => {
+            const text = data.text || data.message; // Handle both formats
+            addMessageToChat(text, false);
+        });
+
+        socket.on("error", (err) => {
+            console.error("Socket error", err);
+            showToast(err.message || "Connection error", "error");
+        });
       }
 
       /* =====================================================
@@ -1925,25 +1950,37 @@
         document.getElementById("startControls").style.display = "none";
 
         try {
+          // Payload should match backend expectations: gender, location, interests, nickname
+          const payload = {
+              gender: state.preferences.gender,
+              location: state.preferences.location,
+              interests: state.preferences.interests,
+              nickname: state.user?.username || "User"
+          };
+
           const response = await fetch(`${BACKEND}/queue/enqueue`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-            body: JSON.stringify(state.preferences),
+            body: JSON.stringify(payload),
           });
 
-          if (!response.ok) throw new Error("Enqueue failed");
+          if (!response.ok) throw new Error((await response.json()).error || "Enqueue failed");
 
           const data = await response.json();
           if (data.matched) {
+            // HTTP matched immediately
             partnerId = data.peerId;
             currentRoom = data.channel;
-            startCall();
+            updatePartnerInfo(data.peerInfo); // Backend might return peerInfo in response
+            startCall(data.channel, data.peerId);
           } else {
+            // No immediate match, rely on Socket event or polling fallback
+            showToast("Looking for a match...", "info");
             setTimeout(() => { if (isMatching) checkForMatch(); }, 3000);
           }
         } catch (error) {
           console.error(error);
-          showToast("Matching failed. Please try again.", "error");
+          showToast(error.message || "Matching failed. Please try again.", "error");
           stopMatching();
         }
       }
@@ -1957,13 +1994,13 @@
             partnerId = data.peerId;
             currentRoom = data.channel;
             updatePartnerInfo(data.peerInfo);
-            startCall();
+            startCall(data.channel, data.peerId);
           } else {
             setTimeout(checkForMatch, 3000);
           }
         } catch (e) {
           console.error("Polling error", e);
-          setTimeout(checkForMatch, 3000);
+          setTimeout(checkForMatch, 5000);
         }
       }
 
@@ -1977,7 +2014,7 @@
       /* =====================================================
    CALL SYSTEM
 ===================================================== */
-      async function startCall() {
+      async function startCall(channelName, peerUid) {
         isMatching = false;
         isInCall = true;
         matchSeconds = 0;
@@ -1989,31 +2026,39 @@
         matchTimer = setInterval(updateTimer, 1000);
 
         try {
+          // 1. Get Agora Token from Backend
+          const uid = Math.floor(Math.random() * 100000); // Generate UID locally first
           const tokenResponse = await fetch(`${BACKEND}/generateToken`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ channelName: currentRoom, uid: Math.floor(Math.random() * 100000) }),
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ channelName: channelName, uid: uid }),
           });
-          const { rtcToken } = await tokenResponse.json();
+          
+          const tokenData = await tokenResponse.json();
+          const { rtcToken, appID } = tokenData;
 
+          // 2. Initialize Agora Client
           client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
           
-          const uid = await client.join(AGORA_APP_ID, currentRoom, rtcToken, Math.floor(Math.random() * 100000));
+          // Join Channel
+          await client.join(appID || AGORA_APP_ID, channelName, rtcToken, uid);
 
+          // Publish Tracks
           if (!localTracks.audioTrack) localTracks.audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
           if (!localTracks.videoTrack) localTracks.videoTrack = await AgoraRTC.createCameraVideoTrack();
 
           await client.publish([localTracks.audioTrack, localTracks.videoTrack]);
 
+          // 3. Handle Remote User
           client.on("user-published", async (user, mediaType) => {
             await client.subscribe(user, mediaType);
             if (mediaType === "video") {
-                // FIX: Wrap track in MediaStream
                 const remoteStream = new MediaStream([user.videoTrack.getMediaStreamTrack()]);
                 document.getElementById("remoteVideo").srcObject = remoteStream;
+                // Play remote video (needed if using srcObject sometimes)
+                document.getElementById("remoteVideo").play().catch(e => console.log("Autoplay prevented", e));
             }
             if (mediaType === "audio") {
-                // Agora handles audio playback internally usually, but we can play it explicitly if needed
                 user.audioTrack.play();
             }
           });
@@ -2023,6 +2068,12 @@
                   document.getElementById("remoteVideo").srcObject = null;
               }
           });
+          
+          // 4. Notify backend via socket that we joined (for tracking)
+          socket.emit("join_room", { room: channelName });
+
+          // 5. Start AI Moderation (Send frames to backend)
+          startModerationLoop(channelName);
 
           state.stats.matches++;
           updateStats();
@@ -2030,14 +2081,14 @@
 
         } catch (error) {
           console.error("Call error:", error);
-          showToast("Failed to connect call", "error");
+          showToast("Failed to connect call: " + error.message, "error");
           endCall();
         }
       }
 
       function updatePartnerInfo(data) {
         if(!data) return;
-        document.getElementById("partnerName").textContent = data?.username || "Stranger";
+        document.getElementById("partnerName").textContent = data?.username || data?.nickname || "Stranger";
         document.getElementById("partnerLocation").textContent = data?.location || "Unknown";
       }
 
@@ -2045,8 +2096,8 @@
         isInCall = false;
         isMatching = false;
         if (matchTimer) clearInterval(matchTimer);
+        if (moderationInterval) clearInterval(moderationInterval);
         
-        // Reset layout to float on end
         currentLayout = 'float';
         document.getElementById("videoContainer").classList.remove('split-mode');
 
@@ -2061,12 +2112,38 @@
             client = null;
         }
 
-        if (socket) {
-            socket.disconnect();
-            socket = null;
+        if (socket && currentRoom) {
+            socket.emit("leave_room", { room: currentRoom });
         }
         
         document.getElementById("timeCount").textContent = "0:00";
+        currentRoom = null;
+        partnerId = null;
+      }
+
+      /* =====================================================
+   MODERATION & AI
+===================================================== */
+      function startModerationLoop(roomId) {
+          if(moderationInterval) clearInterval(moderationInterval);
+          
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          const video = document.getElementById("localVideo"); // The local video element
+
+          moderationInterval = setInterval(() => {
+              if(!isInCall || !video) return;
+
+              // Capture frame
+              canvas.width = 320; // Smaller for faster upload
+              canvas.height = 240;
+              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+              
+              const frameBase64 = canvas.toDataURL('image/jpeg', 0.7);
+              
+              // Send to backend via socket
+              socket.emit("video_frame", { frameBase64, roomId });
+          }, 2000); // Check every 2 seconds
       }
 
       /* =====================================================
@@ -2075,7 +2152,8 @@
       function sendMessage() {
         const input = document.getElementById("messageInput");
         const message = input.value.trim();
-        if (!message || !socket) return;
+        if (!message || !socket || !currentRoom) return;
+        // Backend expects 'room' and 'text'
         socket.emit("message", { room: currentRoom, text: message });
         addMessageToChat(message, true);
         input.value = "";
@@ -2100,7 +2178,6 @@
         document.querySelectorAll(".effect-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.effect === effect));
       }
       
-      // Modals
       const openModal = (id) => document.getElementById(id).classList.add("active");
       const closeModal = (id) => document.getElementById(id).classList.remove("active");
       
@@ -2117,7 +2194,7 @@
         const details = document.getElementById('reportDetails').value;
         
         if(socket) {
-            socket.emit('report_user', { reportedUserId: partnerId, reason, roomId: currentRoom });
+            socket.emit('report_user', { reportedUserId: partnerId, reason: details || reason, roomId: currentRoom });
         }
         showToast("Report submitted", "success"); 
         closeReportModal(); 
@@ -2167,11 +2244,16 @@
             if(response.ok) {
                 const user = await response.json();
                 state.user = user;
+                userCoins = user.coins || 0;
+                
                 document.getElementById("profileName").textContent = user.username || "User";
                 document.getElementById("displayNameInput").value = user.username || "";
-                userCoins = user.coins || 0;
                 document.getElementById("coinsAmount").textContent = userCoins;
                 document.getElementById("coinsDisplay").style.display = "flex";
+                
+                // Load prefs if available in user object
+                if(user.gender) state.preferences.gender = user.gender;
+                if(user.location) state.preferences.location = user.location;
             }
         } catch(e) { console.error("Failed to load profile", e); }
       }
@@ -2203,10 +2285,11 @@
             if(response.ok) {
                 const prefs = await response.json();
                 document.getElementById("genderSelect").value = prefs.gender || "male";
-                document.getElementById("lookingForSelect").value = prefs.looking_for || "any";
+                // Backend uses 'location' not 'lookingFor' for prefs usually
                 document.getElementById("locationSelect").value = prefs.location || "any";
                 document.getElementById("interestsInput").value = (prefs.interests || []).join(", ");
-                state.preferences = prefs;
+                
+                state.preferences = { ...state.preferences, ...prefs };
             }
         } catch(e) { console.error("Failed to load settings", e); }
       }
@@ -2215,7 +2298,6 @@
         const interests = document.getElementById("interestsInput").value.split(",").map(i => i.trim()).filter(i => i.length > 0);
         const payload = {
             gender: document.getElementById("genderSelect").value,
-            lookingFor: document.getElementById("lookingForSelect").value, 
             location: document.getElementById("locationSelect").value,
             interests: interests,
             nickname: state.user?.username || "User" 
@@ -2245,7 +2327,7 @@
         let isDragging = false, currentX, currentY, initialX, initialY;
         
         wrapper.addEventListener('mousedown', (e) => {
-            if (currentLayout === 'split') return; // No drag in split mode
+            if (currentLayout === 'split') return; 
             isDragging = true;
             initialX = e.clientX - (wrapper.offsetLeft || 0);
             initialY = e.clientY - (wrapper.offsetTop || 0);
@@ -2281,6 +2363,7 @@
           await loadSettings();
           await loadProfile();
           
+          // Coin Package Selection
           document.querySelectorAll(".coin-package").forEach(pkg => {
             pkg.addEventListener("click", function() {
                 document.querySelectorAll(".coin-package").forEach(p => p.classList.remove("selected"));
@@ -2309,11 +2392,10 @@
       document.getElementById("effectsBtn").addEventListener("click", toggleEffects);
       document.getElementById("likeBtn").addEventListener("click", () => { state.stats.likes++; updateStats(); showToast("Liked!", "success"); });
       
-      // Updated Buttons
       document.getElementById("cameraBtn").addEventListener("click", switchCamera);
       document.getElementById("layoutBtn").addEventListener("click", toggleLayout);
       
-      document.getElementById("pipBtn").addEventListener("click", () => { /* PiP logic if supported */ });
+      document.getElementById("pipBtn").addEventListener("click", () => { /* PiP logic */ });
       document.getElementById("resetPositionBtn").addEventListener("click", resetVideoPosition);
       
       document.querySelectorAll(".effect-btn").forEach(btn => btn.addEventListener("click", () => applyEffect(btn.dataset.effect)));
@@ -2322,7 +2404,7 @@
           opt.classList.add("selected");
       }));
 
-      // Expose functions to global scope
+      // Global Scope Functions
       window.requestPermissions = requestPermissions;
       window.denyPermissions = denyPermissions;
       window.toggleSettings = toggleSettings;
@@ -2344,7 +2426,6 @@
       window.purchaseCoins = purchaseCoins;
       window.resetVideoPosition = resetVideoPosition;
 
-      // Start App
       init();
 
     </script>
