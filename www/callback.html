@@ -43,11 +43,14 @@
   const backendURL = "https://term-production-bf65.up.railway.app";
 
   async function handleAuth() {
-    const code = new URLSearchParams(window.location.search).get("code");
-    console.log("CODE:", code);
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    const provider = params.get("provider"); // e.g., discord, google, facebook
 
-    if (!code) {
-      alert("Missing code in URL");
+    console.log("CODE:", code, "PROVIDER:", provider);
+
+    if (!code || !provider) {
+      alert("Missing code or provider in URL");
       return;
     }
 
@@ -55,7 +58,7 @@
       const res = await fetch(`${backendURL}/auth/exchange`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code })
+        body: JSON.stringify({ code, provider })
       });
 
       const text = await res.text();
@@ -84,6 +87,7 @@
         return;
       }
 
+      // Redirect to main page after successful login
       window.location.href = "/achat.html";
 
     } catch (err) {
