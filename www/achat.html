@@ -263,13 +263,17 @@
         align-items: center;
         background: var(--dark);
         overflow: hidden;
+        top: 0;
+        left: 0;
+        transition: all 0.3s ease;
       }
 
       #remoteVideo {
         width: 100%;
         height: 100%;
         object-fit: cover;
-        transform: scaleX(-1);
+        /* FIX: Remote video should NOT be inverted (mirrored) */
+        transform: scaleX(1); 
         transition: filter 0.3s ease;
       }
 
@@ -285,7 +289,7 @@
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
         border: 2px solid var(--glass-border);
         background: var(--dark);
-        transition: box-shadow 0.3s ease;
+        transition: all 0.3s ease;
         z-index: 1000;
         cursor: move;
         touch-action: none;
@@ -299,7 +303,27 @@
         width: 100%;
         height: 100%;
         object-fit: cover;
-        transform: scaleX(-1);
+        /* Default: Mirror for selfie view */
+        transform: scaleX(-1); 
+      }
+
+      /* Split Screen Layout */
+      .split-mode #remoteVideoWrapper {
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 50%;
+        border-radius: 0;
+      }
+
+      .split-mode #localVideoWrapper {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 50%;
+        border-radius: 0;
+        z-index: 5; /* Lower than controls */
       }
 
       /* PiP Button */
@@ -943,6 +967,12 @@
 
       /* Responsive Design */
       @media (max-width: 768px) {
+        /* In split mode on mobile, controls might overlap, ensure they stay on top */
+        #controls {
+          z-index: 100;
+        }
+        
+        /* Default floating mode adjustments */
         #localVideoWrapper {
           width: 100px;
           height: 140px;
@@ -1127,48 +1157,6 @@
         font-size: 1rem;
         color: var(--text-dim);
       }
-
-      /* Device Selector */
-      .device-selector {
-        position: fixed;
-        bottom: 150px;
-        right: 30px;
-        background: var(--glass);
-        backdrop-filter: blur(20px);
-        border: 1px solid var(--glass-border);
-        border-radius: 20px;
-        padding: 20px;
-        display: none;
-        flex-direction: column;
-        gap: 10px;
-        z-index: 30;
-      }
-
-      .device-selector.active {
-        display: flex;
-      }
-
-      .device-option {
-        padding: 10px 15px;
-        background: var(--dark);
-        border: 1px solid var(--glass-border);
-        border-radius: 12px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-
-      .device-option:hover {
-        border-color: var(--primary);
-        background: rgba(99, 102, 241, 0.1);
-      }
-
-      .device-option.selected {
-        border-color: var(--primary);
-        background: rgba(99, 102, 241, 0.2);
-      }
     </style>
   </head>
   <body>
@@ -1226,7 +1214,7 @@
     <!-- Main App -->
     <div id="app">
       <!-- Video Container -->
-      <div class="video-container">
+      <div class="video-container" id="videoContainer">
         <!-- Remote Video -->
         <div id="remoteVideoWrapper">
           <video id="remoteVideo" autoplay playsinline></video>
@@ -1332,6 +1320,9 @@
             <button class="control-btn" id="cameraBtn" title="Switch Camera">
               <i class="fas fa-camera"></i>
             </button>
+            <button class="control-btn" id="layoutBtn" title="Change Layout">
+              <i class="fas fa-columns"></i>
+            </button>
           </div>
         </div>
 
@@ -1355,14 +1346,6 @@
           <button class="effect-btn" data-effect="contrast" title="High Contrast">
             <i class="fas fa-sun"></i>
           </button>
-        </div>
-
-        <!-- Device Selector -->
-        <div class="device-selector" id="deviceSelector">
-          <div class="device-option selected" data-device-id="">
-            <i class="fas fa-video"></i>
-            <span>Default Camera</span>
-          </div>
         </div>
       </div>
     </div>
@@ -1632,7 +1615,6 @@
 ===================================================== */
       const BACKEND = "https://term-2gkk.onrender.com";
       const AGORA_APP_ID = "0f9094ed4a8e4dea934059b0ea8b5182";
-      // REPLACE WITH YOUR ACTUAL STRIPE PUBLISHABLE KEY
       const STRIPE_PUBLISHABLE_KEY = "pk_test_your_stripe_key_here"; 
 
       let token = localStorage.getItem("token");
@@ -1650,6 +1632,8 @@
       let matchSeconds = 0;
       let permissionsGranted = false;
       let availableCameras = [];
+      let currentCameraIndex = 0;
+      let currentLayout = 'float'; // 'float' or 'split'
       let stripe = null;
       let selectedCoinPackage = null;
       let userCoins = 0;
@@ -1778,7 +1762,6 @@
         window.location.href = "/index.html";
       }
 
-      // UPDATE: Set video quality to 720p_3 (1280x720, 30fps)
       async function requestPermissions() {
         const allowBtn = document.querySelector(".permission-btn.primary");
         const denyBtn = document.querySelector(".permission-btn.secondary");
@@ -1787,10 +1770,9 @@
         allowBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Requesting...';
 
         try {
-          // 1. Create Agora Tracks with 720p Configuration
           localTracks.audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
           
-          // Using encoderConfig for 720p @ 30fps
+          // 720p Configuration
           localTracks.videoTrack = await AgoraRTC.createCameraVideoTrack({
             encoderConfig: {
               width: 1280,
@@ -1800,25 +1782,18 @@
             }
           });
 
-          // 2. Play video locally
           localTracks.videoTrack.play("localVideo");
-
           permissionsGranted = true;
 
-          // 3. Hide Overlays and Init App
           document.getElementById("permissionOverlay").classList.add("hidden");
           document.getElementById("loadingScreen").classList.add("hidden");
           
-          // Get devices for the switcher
           await getDevicesSafe();
-
-          // Initialize the rest of the app logic
           await initializeApp();
 
         } catch (err) {
           console.error("Permission error:", err);
           showToast("Camera & microphone permission required", "error");
-
           allowBtn.disabled = false;
           allowBtn.innerHTML = "Allow Access";
         }
@@ -1833,31 +1808,71 @@
         try {
             const devices = await AgoraRTC.getDevices();
             availableCameras = devices.filter(d => d.kind === 'videoinput');
-            const deviceSelector = document.getElementById("deviceSelector");
-            deviceSelector.innerHTML = "";
-
-            availableCameras.forEach((camera, index) => {
-                const option = document.createElement("div");
-                option.className = "device-option";
-                option.dataset.deviceId = camera.deviceId;
-                option.innerHTML = `<i class="fas fa-video"></i><span>${camera.label || `Camera ${index + 1}`}</span>`;
-                option.addEventListener("click", () => selectCamera(camera.deviceId));
-                deviceSelector.appendChild(option);
-            });
+            // Set initial index
+            const currentDeviceId = localTracks.videoTrack?.getMediaStreamTrack()?.getSettings()?.deviceId;
+            if (currentDeviceId) {
+                const idx = availableCameras.findIndex(c => c.deviceId === currentDeviceId);
+                if (idx !== -1) currentCameraIndex = idx;
+            }
         } catch(e) {
             console.error("Error enumerating devices", e);
         }
       }
 
-      async function selectCamera(deviceId) {
-        if (!localTracks.videoTrack) return;
-        
+      /* =====================================================
+   CAMERA & LAYOUT CONTROLS
+===================================================== */
+      
+      // Smart Camera Switching (Front/Back)
+      async function switchCamera() {
+        if (!localTracks.videoTrack || availableCameras.length <= 1) {
+            showToast("No other camera found", "info");
+            return;
+        }
+
         try {
-            await localTracks.videoTrack.setDevice(deviceId);
-            showToast("Camera switched", "success");
+            // Calculate next index
+            currentCameraIndex = (currentCameraIndex + 1) % availableCameras.length;
+            const newDevice = availableCameras[currentCameraIndex];
+
+            // Switch device
+            await localTracks.videoTrack.setDevice(newDevice.deviceId);
+            showToast(`Switched to ${newDevice.label || 'Camera ' + (currentCameraIndex + 1)}`, "success");
+
+            // Smart Mirroring Logic:
+            // Usually 'back' or 'environment' cameras should NOT be mirrored.
+            // 'front' or 'user' cameras SHOULD be mirrored.
+            const localVideoEl = document.getElementById("localVideo");
+            const isBackCamera = newDevice.label.toLowerCase().includes("back") || 
+                                 newDevice.label.toLowerCase().includes("environment");
+            
+            if (isBackCamera) {
+                localVideoEl.style.transform = "scaleX(1)"; // Normal view for back camera
+            } else {
+                localVideoEl.style.transform = "scaleX(-1)"; // Mirror for front camera
+            }
+
         } catch(e) {
             console.error("Switch camera error", e);
+            showToast("Failed to switch camera", "error");
         }
+      }
+
+      // Layout Toggle (Float vs Split)
+      function toggleLayout() {
+          const container = document.getElementById("videoContainer");
+          const localWrapper = document.getElementById("localVideoWrapper");
+          
+          if (currentLayout === 'float') {
+              currentLayout = 'split';
+              container.classList.add('split-mode');
+              showToast("Split Screen Mode", "info");
+          } else {
+              currentLayout = 'float';
+              container.classList.remove('split-mode');
+              resetVideoPosition(); // Ensure it snaps back to default float position
+              showToast("Float Mode", "info");
+          }
       }
 
       /* =====================================================
@@ -1871,10 +1886,9 @@
       }
       function toggleChat() { document.getElementById("chatPanel").classList.toggle("open"); }
       function toggleEffects() { document.getElementById("effectsPanel").classList.toggle("active"); }
-      function toggleDeviceSelector() { document.getElementById("deviceSelector").classList.toggle("active"); }
 
       /* =====================================================
-   SOCKET CONNECTION (FIXED)
+   SOCKET CONNECTION
 ===================================================== */
       function initSocket() {
         if (socket) return;
@@ -1910,7 +1924,6 @@
           return;
         }
 
-        // Ensure socket is connected before matching
         initSocket();
 
         isMatching = true;
@@ -1932,7 +1945,6 @@
             currentRoom = data.channel;
             startCall();
           } else {
-            // Polling fallback
             setTimeout(() => { if (isMatching) checkForMatch(); }, 3000);
           }
         } catch (error) {
@@ -1969,7 +1981,7 @@
       }
 
       /* =====================================================
-   CALL SYSTEM (AGORA)
+   CALL SYSTEM
 ===================================================== */
       async function startCall() {
         isMatching = false;
@@ -1983,7 +1995,6 @@
         matchTimer = setInterval(updateTimer, 1000);
 
         try {
-          // 1. Get Token
           const tokenResponse = await fetch(`${BACKEND}/generateToken`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1991,19 +2002,15 @@
           });
           const { rtcToken } = await tokenResponse.json();
 
-          // 2. Create Client
           client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
           
-          // 3. Join Channel
           const uid = await client.join(AGORA_APP_ID, currentRoom, rtcToken, Math.floor(Math.random() * 100000));
 
-          // 4. Publish Existing Tracks (Created during permission request)
           if (!localTracks.audioTrack) localTracks.audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
           if (!localTracks.videoTrack) localTracks.videoTrack = await AgoraRTC.createCameraVideoTrack();
 
           await client.publish([localTracks.audioTrack, localTracks.videoTrack]);
 
-          // 5. Handle Remote User
           client.on("user-published", async (user, mediaType) => {
             await client.subscribe(user, mediaType);
             if (mediaType === "video") {
@@ -2036,7 +2043,6 @@
         if(!data) return;
         document.getElementById("partnerName").textContent = data?.username || "Stranger";
         document.getElementById("partnerLocation").textContent = data?.location || "Unknown";
-        // Update other fields if needed
       }
 
       function endCall() {
@@ -2044,6 +2050,10 @@
         isMatching = false;
         if (matchTimer) clearInterval(matchTimer);
         
+        // Reset layout to float on end
+        currentLayout = 'float';
+        document.getElementById("videoContainer").classList.remove('split-mode');
+
         document.getElementById("activeControls").style.display = "none";
         document.getElementById("startControls").style.display = "flex";
         document.getElementById("partnerInfo").style.display = "none";
@@ -2093,8 +2103,6 @@
         video.style.filter = filters[effect] || "";
         document.querySelectorAll(".effect-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.effect === effect));
       }
-
-      function switchCamera() { toggleDeviceSelector(); }
       
       // Modals
       const openModal = (id) => document.getElementById(id).classList.add("active");
@@ -2108,7 +2116,6 @@
       function closePaymentModal() { closeModal("paymentModal"); }
 
       async function submitReport() { 
-        // Basic report logic
         const selected = document.querySelector('.report-option.selected');
         const reason = selected ? selected.dataset.reason : 'other';
         const details = document.getElementById('reportDetails').value;
@@ -2122,18 +2129,15 @@
       }
       
       async function sendGift(type) { 
-        // Deduct coins logic needed here
         closeGiftsModal(); 
         showToast("Gift sent!", "success"); 
       }
       
-      // FIX: Implemented Stripe Checkout
       async function purchaseCoins() {
         if (!selectedCoinPackage) {
             showToast("Please select a package", "error");
             return;
         }
-
         try {
             const response = await fetch(`${BACKEND}/api/create-checkout-session`, {
                 method: "POST",
@@ -2143,16 +2147,11 @@
                 },
                 body: JSON.stringify(selectedCoinPackage)
             });
-
             const data = await response.json();
-
             if (data.sessionId) {
                 const stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
                 const { error } = await stripe.redirectToCheckout({ sessionId: data.sessionId });
-                
-                if (error) {
-                    showToast(error.message, "error");
-                }
+                if (error) showToast(error.message, "error");
             } else {
                 showToast("Failed to initialize payment", "error");
             }
@@ -2163,14 +2162,12 @@
       }
 
       /* =====================================================
-   PROFILE & PREFERENCES (FIXED)
+   PROFILE & PREFERENCES
 ===================================================== */
       async function loadProfile() {
         if(!token) return;
         try {
-            const response = await fetch(`${BACKEND}/user/profile`, {
-                headers: { "Authorization": `Bearer ${token}` }
-            });
+            const response = await fetch(`${BACKEND}/user/profile`, { headers: { "Authorization": `Bearer ${token}` }});
             if(response.ok) {
                 const user = await response.json();
                 state.user = user;
@@ -2180,25 +2177,18 @@
                 document.getElementById("coinsAmount").textContent = userCoins;
                 document.getElementById("coinsDisplay").style.display = "flex";
             }
-        } catch(e) {
-            console.error("Failed to load profile", e);
-        }
+        } catch(e) { console.error("Failed to load profile", e); }
       }
 
       async function saveProfile() {
         const name = document.getElementById("displayNameInput").value;
         if(!name) return;
-
         try {
             const response = await fetch(`${BACKEND}/user/display-name`, {
                 method: "POST",
-                headers: { 
-                    "Content-Type": "application/json", 
-                    "Authorization": `Bearer ${token}` 
-                },
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify({ display_name: name })
             });
-
             if(response.ok) {
                 showToast("Profile updated!", "success");
                 state.user.username = name;
@@ -2207,17 +2197,13 @@
                 const err = await response.json();
                 showToast(err.error || "Failed", "error");
             }
-        } catch(e) {
-            console.error(e);
-        }
+        } catch(e) { console.error(e); }
       }
 
       async function loadSettings() {
         if(!token) return;
         try {
-            const response = await fetch(`${BACKEND}/api/user/preferences`, {
-                headers: { "Authorization": `Bearer ${token}` }
-            });
+            const response = await fetch(`${BACKEND}/api/user/preferences`, { headers: { "Authorization": `Bearer ${token}` }});
             if(response.ok) {
                 const prefs = await response.json();
                 document.getElementById("genderSelect").value = prefs.gender || "male";
@@ -2226,17 +2212,11 @@
                 document.getElementById("interestsInput").value = (prefs.interests || []).join(", ");
                 state.preferences = prefs;
             }
-        } catch(e) {
-            console.error("Failed to load settings", e);
-        }
+        } catch(e) { console.error("Failed to load settings", e); }
       }
 
       async function saveSettings() {
-        const interests = document.getElementById("interestsInput").value
-            .split(",")
-            .map(i => i.trim())
-            .filter(i => i.length > 0);
-
+        const interests = document.getElementById("interestsInput").value.split(",").map(i => i.trim()).filter(i => i.length > 0);
         const payload = {
             gender: document.getElementById("genderSelect").value,
             lookingFor: document.getElementById("lookingForSelect").value, 
@@ -2244,17 +2224,12 @@
             interests: interests,
             nickname: state.user?.username || "User" 
         };
-
         try {
             const response = await fetch(`${BACKEND}/api/user/preferences`, {
                 method: "POST",
-                headers: { 
-                    "Content-Type": "application/json", 
-                    "Authorization": `Bearer ${token}` 
-                },
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify(payload)
             });
-
             if(response.ok) {
                 showToast("Settings saved!", "success");
                 state.preferences = payload;
@@ -2263,10 +2238,7 @@
                 const err = await response.json();
                 showToast(err.error || "Failed to save", "error");
             }
-        } catch(e) {
-            console.error(e);
-            showToast("Error saving settings", "error");
-        }
+        } catch(e) { console.error(e); showToast("Error saving settings", "error"); }
       }
 
       /* =====================================================
@@ -2277,13 +2249,14 @@
         let isDragging = false, currentX, currentY, initialX, initialY;
         
         wrapper.addEventListener('mousedown', (e) => {
+            if (currentLayout === 'split') return; // No drag in split mode
             isDragging = true;
             initialX = e.clientX - (wrapper.offsetLeft || 0);
             initialY = e.clientY - (wrapper.offsetTop || 0);
         });
 
         document.addEventListener('mousemove', (e) => {
-            if(isDragging) {
+            if(isDragging && currentLayout === 'float') {
                 e.preventDefault();
                 wrapper.style.right = 'auto';
                 wrapper.style.bottom = 'auto';
@@ -2307,13 +2280,11 @@
    INITIALIZATION
 ===================================================== */
       async function initializeApp() {
-          // Logic to run after permissions are granted
           initDraggableVideo();
-          initSocket(); // FIX: Initialize socket immediately
+          initSocket(); 
           await loadSettings();
           await loadProfile();
           
-          // Handle coin package selection
           document.querySelectorAll(".coin-package").forEach(pkg => {
             pkg.addEventListener("click", function() {
                 document.querySelectorAll(".coin-package").forEach(p => p.classList.remove("selected"));
@@ -2328,7 +2299,6 @@
 
       async function init() {
         if (!checkAuthentication()) return;
-        
         document.getElementById("loadingScreen").classList.add("hidden");
         document.getElementById("permissionOverlay").classList.remove("hidden");
       }
@@ -2342,7 +2312,11 @@
       document.getElementById("giftsBtn").addEventListener("click", openGiftsModal);
       document.getElementById("effectsBtn").addEventListener("click", toggleEffects);
       document.getElementById("likeBtn").addEventListener("click", () => { state.stats.likes++; updateStats(); showToast("Liked!", "success"); });
+      
+      // Updated Buttons
       document.getElementById("cameraBtn").addEventListener("click", switchCamera);
+      document.getElementById("layoutBtn").addEventListener("click", toggleLayout);
+      
       document.getElementById("pipBtn").addEventListener("click", () => { /* PiP logic if supported */ });
       document.getElementById("resetPositionBtn").addEventListener("click", resetVideoPosition);
       
@@ -2352,7 +2326,7 @@
           opt.classList.add("selected");
       }));
 
-      // Expose functions to global scope for onclick
+      // Expose functions to global scope
       window.requestPermissions = requestPermissions;
       window.denyPermissions = denyPermissions;
       window.toggleSettings = toggleSettings;
