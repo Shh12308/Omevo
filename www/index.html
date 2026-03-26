@@ -1,20 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Omevo - Meet New People</title>
 
   <!-- SEO / Social Meta Tags -->
-  <meta name="description" content="Connect instantly with new friends via video chat on Omevo."/>
-  <meta property="og:title" content="Omevo - Meet New People"/>
-  <meta property="og:description" content="Connect instantly with new friends via video chat."/>
-  <meta property="og:image" content="/images/og-image.png"/>
-  <meta property="og:type" content="website"/>
-  <meta name="twitter:card" content="summary_large_image"/>
+  <meta name="description" content="Connect instantly with new friends via video chat on Omevo." />
+  <meta property="og:title" content="Omevo - Meet New People" />
+  <meta property="og:description" content="Connect instantly with new friends via video chat." />
+  <meta property="og:image" content="/images/og-image.png" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
 
-  <link rel="icon" type="image/png" href="/icons/favicon-32x32.png">
-  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="/icons/favicon-32x32.png" />
+  <link rel="manifest" href="/manifest.json" />
 
   <!-- AdSense -->
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5847677612423434"
@@ -25,7 +25,7 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/service-worker.js')
-          .then(() => console.log("Service Worker Registered"))
+          .then(reg => console.log("Service Worker registered:", reg))
           .catch(err => console.error("SW registration failed:", err));
       });
     }
@@ -51,9 +51,10 @@
       text-align: center;
       width: 90%;
       max-width: 400px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
     }
 
-    h1 { color: #1db9ff; }
+    h1 { color: #1db9ff; margin-bottom: 10px; }
 
     .oauth-btn {
       display: flex;
@@ -66,12 +67,12 @@
       border-radius: 8px;
       cursor: pointer;
       font-weight: bold;
+      transition: transform 0.1s;
     }
 
-    .oauth-btn img {
-      width: 24px;
-      margin-right: 10px;
-    }
+    .oauth-btn:hover { transform: translateY(-2px); }
+
+    .oauth-btn img { width: 24px; margin-right: 10px; }
 
     .google { background: #fff; color: #000; }
     .discord { background: #5865f2; color: #fff; }
@@ -88,34 +89,36 @@
        data-ad-slot="7864868911"
        data-ad-format="auto"></ins>
   <script>
-    window.adsbygoogle = window.adsbygoogle || [];
-    window.adsbygoogle.push({});
+    (adsbygoogle = window.adsbygoogle || []).push({});
   </script>
 
   <div class="auth-container">
     <h1>Welcome to Omevo</h1>
     <p>Sign in to continue</p>
 
-    <button class="oauth-btn google" onclick="login('google')">
-      <img src="https://www.svgrepo.com/show/475656/google-color.svg"/>
+    <button class="oauth-btn google" onclick="login('google')" aria-label="Sign in with Google">
+      <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google Logo" />
       Sign in with Google
     </button>
 
-    <button class="oauth-btn discord" onclick="login('discord')">
-      <img src="https://www.svgrepo.com/show/353655/discord-icon.svg"/>
+    <button class="oauth-btn discord" onclick="login('discord')" aria-label="Sign in with Discord">
+      <img src="https://www.svgrepo.com/show/353655/discord-icon.svg" alt="Discord Logo" />
       Sign in with Discord
     </button>
 
-    <button class="oauth-btn facebook" onclick="login('facebook')">
-      <img src="https://www.svgrepo.com/show/157806/facebook.svg"/>
+    <button class="oauth-btn facebook" onclick="login('facebook')" aria-label="Sign in with Facebook">
+      <img src="https://www.svgrepo.com/show/157806/facebook.svg" alt="Facebook Logo" />
       Sign in with Facebook
     </button>
   </div>
 
   <script>
+    const backendURL = "https://term-production-bf65.up.railway.app";
+
     function login(provider) {
-      const backendURL = "https://term-production-bf65.up.railway.app";
-      window.location.href = `${backendURL}/auth/${provider}?redirect=/callback.html`;
+      // Redirect to backend OAuth endpoint
+      const redirectPath = encodeURIComponent("/callback.html");
+      window.location.href = `${backendURL}/auth/${provider}?redirect=${redirectPath}`;
     }
   </script>
 
