@@ -42,54 +42,55 @@
 <script>
   const backendURL = "https://term-production-bf65.up.railway.app";
 
-  function getCodeFromURL() {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      return params.get("code") || null;
-    } catch {
-      return null;
-    }
-  }
-
   async function handleAuth() {
-  const code = new URLSearchParams(window.location.search).get("code");
+    const code = new URLSearchParams(window.location.search).get("code");
+    console.log("CODE:", code);
 
-  console.log("CODE:", code);
-
-  if (!code) {
-    alert("Missing code");
-    return;
-  }
-
-  try {
-    const res = await fetch(`${backendURL}/auth/exchange`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ code })
-    });
-
-    console.log("Exchange status:", res.status);
-
-    const text = await res.text();
-    console.log("Exchange raw response:", text);
-
-    const data = JSON.parse(text);
-
-    if (!data.token) {
-      throw new Error("No token in response");
+    if (!code) {
+      alert("Missing code in URL");
+      return;
     }
 
-    localStorage.setItem("token", data.token);
+    try {
+      const res = await fetch(`${backendURL}/auth/exchange`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code })
+      });
 
-    window.location.href = "/achat.html";
+      const text = await res.text();
+      console.log("Exchange raw response:", text);
 
-  } catch (err) {
-    console.error("FULL ERROR:", err);
-    alert("Login failed. Check console.");
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error("Failed to parse JSON:", e);
+        alert("Login failed: invalid server response");
+        return;
+      }
+
+      if (!data.token) {
+        console.error("No token returned:", data);
+        alert("Login failed: token not found");
+        return;
+      }
+
+      try {
+        localStorage.setItem("token", data.token);
+      } catch (e) {
+        console.error("Failed to save token in localStorage:", e);
+        alert("Login failed: cannot save token");
+        return;
+      }
+
+      window.location.href = "/achat.html";
+
+    } catch (err) {
+      console.error("FULL ERROR:", err);
+      alert("Login failed. Check console for details.");
+    }
   }
-}
 
   handleAuth();
 </script>
