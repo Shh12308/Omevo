@@ -40,63 +40,25 @@
   </div>
 
 <script>
-  const backendURL = "https://term-production-bf65.up.railway.app";
+  // Step 1: Get token from URL (redirected from backend)
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("token");
 
-  async function handleAuth() {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get("code");
-    const provider = params.get("provider"); // e.g., discord, google, facebook
-
-    console.log("CODE:", code, "PROVIDER:", provider);
-
-    if (!code || !provider) {
-      alert("Missing code or provider in URL");
-      return;
-    }
-
+  if (!token) {
+    alert("Login failed: no token received from server.");
+  } else {
+    // Step 2: Save JWT to localStorage
     try {
-      const res = await fetch(`${backendURL}/auth/exchange`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, provider })
-      });
-
-      const text = await res.text();
-      console.log("Exchange raw response:", text);
-
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        console.error("Failed to parse JSON:", e);
-        alert("Login failed: invalid server response");
-        return;
-      }
-
-      if (!data.token) {
-        console.error("No token returned:", data);
-        alert("Login failed: token not found");
-        return;
-      }
-
-      try {
-        localStorage.setItem("token", data.token);
-      } catch (e) {
-        console.error("Failed to save token in localStorage:", e);
-        alert("Login failed: cannot save token");
-        return;
-      }
-
-      // Redirect to main page after successful login
-      window.location.href = "/achat.html";
-
-    } catch (err) {
-      console.error("FULL ERROR:", err);
-      alert("Login failed. Check console for details.");
+      localStorage.setItem("token", token);
+      console.log("Token saved:", token);
+    } catch (e) {
+      console.error("Failed to save token:", e);
+      alert("Login failed: cannot save token");
     }
-  }
 
-  handleAuth();
+    // Step 3: Redirect to main page
+    window.location.href = "/achat.html";
+  }
 </script>
 
 </body>
