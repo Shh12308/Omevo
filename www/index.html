@@ -36,15 +36,32 @@
     crossorigin="anonymous"></script>
 
   <!-- Service Worker -->
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-          .then(reg => console.log("Service Worker registered:", reg))
-          .catch(err => console.error("SW registration failed:", err));
-      });
-    }
-  </script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(registration => {
+        console.log("Service Worker registered:", registration);
+
+        // Activate immediately if a SW is waiting
+        if (registration.waiting) {
+          registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
+
+        // Optional: listen for updates
+        registration.onupdatefound = () => {
+          const newWorker = registration.installing;
+          newWorker.onstatechange = () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              console.log('New Service Worker installed and ready.');
+            }
+          };
+        };
+      })
+      .catch(err => console.error("SW registration failed:", err));
+  });
+}
+</script>
 
   <style>
     body {
