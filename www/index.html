@@ -115,10 +115,13 @@
   <script>
   const backendURL = "https://term-production-bf65.up.railway.app";
 
-  function login(provider) {
-    const redirectPath = encodeURIComponent("/callback.html");
-    window.location.href = `${backendURL}/auth/${provider}?redirect=${redirectPath}`;
-  }
+function login(provider) {
+  const redirectURL = encodeURIComponent(
+    `/callback.html?provider=${provider}`
+  );
+
+  window.location.href = `${backendURL}/auth/${provider}?redirect=${redirectURL}`;
+}
 
   // 🔥 NEW: handle OAuth return (code in URL)
   function handleOAuthReturn() {
