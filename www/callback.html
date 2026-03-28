@@ -55,7 +55,7 @@
     }
 
     try {
-      const res = await fetch(`${backendURL}/auth/exchange`, {
+      const res = await fetch(`${backendURL}/auth/me`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, provider })
