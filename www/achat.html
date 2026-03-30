@@ -10,6 +10,7 @@
     <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
     <script src="https://js.stripe.com/v3/"></script>
     <style>
+      /* CSS remains unchanged to preserve design integrity */
       :root {
         --primary: #6366f1;
         --primary-dark: #4f46e5;
@@ -2039,6 +2040,7 @@
 
     <script>
       /* ===================== CONFIG ===================== */
+      // Note: In production, sensitive keys should be handled via backend proxies where possible.
       const BACKEND = "https://term-production-bf65.up.railway.app";
       const AGORA_APP_ID = "0f9094ed4a8e4dea934059b0ea8b5182";
       const STRIPE_PUBLISHABLE_KEY = "pk_test_your_stripe_key_here";
@@ -2067,7 +2069,13 @@
       let selectedCoinPackage = null;
       let userCoins = 0;
       let moderationInterval = null;
+      
+      // Initialize Stripe globally for better performance
       let stripe = null;
+      if(typeof Stripe !== 'undefined') {
+        stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
+      }
+      
       let banData = null;
 
       const state = {
@@ -2516,9 +2524,19 @@
           var dev = availableCameras[currentCameraIndex];
           await localTracks.videoTrack.setDevice(dev.deviceId);
           showToast("Switched to " + (dev.label || "Camera"), "success");
+          
+          // Handle mirroring for local video element
           var el = document.querySelector("#localVideo video");
-          if (el) el.style.transform = dev.label && dev.label.toLowerCase().includes("back") ? "scaleX(1)" : "scaleX(-1)";
-        } catch (e) { showToast("Failed to switch", "error"); }
+          if (el) {
+             // Usually front cameras are mirrored, back cameras are not. 
+             // Agora handles this sometimes, but we force update the CSS.
+             const isBackCamera = dev.label.toLowerCase().includes("back") || dev.label.toLowerCase().includes("rear");
+             el.style.transform = isBackCamera ? "scaleX(1)" : "scaleX(-1)";
+          }
+        } catch (e) { 
+          console.error("Camera switch error", e);
+          showToast("Failed to switch", "error"); 
+        }
       }
 
       function toggleLayout() {
@@ -2705,7 +2723,7 @@
           if (!isInCall || !socket || !socket.connected) return;
           try {
             var v = document.querySelector("#localVideo video");
-            if (!v) return;
+            if (!v || v.readyState < 2) return; // Check if video is ready
             mc.width = 320;
             mc.height = 240;
             mx.drawImage(v, 0, 0, 320, 240);
@@ -2804,7 +2822,7 @@
           });
           var d = await r.json();
           if (d.sessionId) {
-            if (!stripe) stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
+            // Stripe is already initialized globally
             var err = await stripe.redirectToCheckout({ sessionId: d.sessionId });
             if (err.error) showToast(err.error.message, "error");
           } else showToast("Failed", "error");
@@ -2890,6 +2908,33 @@
         w.style.left = "auto";
         w.style.top = "auto";
       }
+      
+      /* ===================== PICTURE IN PICTURE ===================== */
+      async function togglePiP() {
+        try {
+          const videoElement = document.querySelector("#localVideo video");
+          if (!videoElement) {
+            showToast("Video not available", "error");
+            return;
+          }
+          
+          if (document.pictureInPictureElement) {
+            await document.exitPictureInPicture();
+            showToast("Exited Picture-in-Picture", "info");
+          } else if (document.pictureInPictureEnabled) {
+            await videoElement.requestPictureInPicture();
+            showToast("Picture-in-Picture mode", "success");
+          }
+        } catch (error) {
+          console.error("PiP Error:", error);
+          // PiP might not be supported or video metadata not loaded
+          if(error.name === 'NotAllowedError') {
+             showToast("Interaction required to start PiP", "error");
+          } else {
+             showToast("Picture-in-Picture not supported", "error");
+          }
+        }
+      }
 
       /* ===================== INIT ===================== */
       async function initializeAfterAuth() {
@@ -2974,7 +3019,10 @@
       });
       document.getElementById("cameraBtn").addEventListener("click", switchCamera);
       document.getElementById("layoutBtn").addEventListener("click", toggleLayout);
-      document.getElementById("pipBtn").addEventListener("click", function () {});
+      
+      // Updated PiP Button Listener
+      document.getElementById("pipBtn").addEventListener("click", togglePiP);
+      
       document.getElementById("resetPositionBtn").addEventListener("click", resetVideoPosition);
       document.querySelectorAll(".effect-btn").forEach(function (b) { b.addEventListener("click", function () { applyEffect(b.dataset.effect); }); });
       document.querySelectorAll(".report-option").forEach(function (o) { o.addEventListener("click", function () { document.querySelectorAll(".report-option").forEach(function (x) { x.classList.remove("selected"); }); o.classList.add("selected"); }); });
