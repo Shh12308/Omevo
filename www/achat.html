@@ -3,17 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="description" content="Omevo - Next Generation Video Chat Platform with AI Moderation and Real-time Translation" />
+    <meta name="theme-color" content="#0f172a" />
     <title>Omevo - Next Generation Video Chat</title>
+    
+    <!-- Preconnect to origins -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+    
+    <!-- External Scripts -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
     <script src="https://js.stripe.com/v3/"></script>
+
     <style>
-      /* CSS remains unchanged to preserve design integrity */
+      /* ===================== ROOT VARIABLES ===================== */
       :root {
         --primary: #6366f1;
         --primary-dark: #4f46e5;
+        --primary-lighter: #818cf8;
         --secondary: #ec4899;
         --accent: #14b8a6;
         --dark: #0f172a;
@@ -29,13 +39,33 @@
         --gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         --glass: rgba(255, 255, 255, 0.05);
         --glass-border: rgba(255, 255, 255, 0.1);
+        
+        /* Brand Colors */
         --coinbase-blue: #0052ff;
         --google-red: #ea4335;
         --discord-blurple: #5865f2;
         --facebook-blue: #1877f2;
+        
+        /* Spacing & Sizing */
+        --radius-sm: 8px;
+        --radius-md: 12px;
+        --radius-lg: 20px;
+        --radius-full: 9999px;
+        --transition-fast: 0.15s ease;
+        --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        --transition-slow: 0.5s ease;
+        
+        /* Shadows */
+        --shadow-sm: 0 2px 4px rgba(0,0,0,0.1);
+        --shadow-md: 0 4px 12px rgba(0,0,0,0.15);
+        --shadow-lg: 0 10px 40px rgba(0,0,0,0.25);
+        --shadow-glow: 0 0 30px rgba(99, 102, 241, 0.25);
       }
 
-      * {
+      /* ===================== RESET & BASE ===================== */
+      *,
+      *::before,
+      *::after {
         margin: 0;
         padding: 0;
         box-sizing: border-box;
@@ -45,11 +75,35 @@
       body {
         width: 100%;
         height: 100%;
-        font-family: "Inter", sans-serif;
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         background: var(--dark);
         color: var(--text);
         overflow: hidden;
         -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        scroll-behavior: smooth;
+      }
+
+      /* Accessibility: Focus Visible */
+      :focus-visible {
+        outline: 2px solid var(--primary);
+        outline-offset: 2px;
+      }
+      
+      /* Hide scrollbar but allow scrolling */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--dark-card);
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--text-muted);
       }
 
       /* ===================== BAN SCREEN ===================== */
@@ -324,6 +378,7 @@
         justify-content: center;
         align-items: center;
         z-index: 100001;
+        backdrop-filter: blur(5px);
       }
       .appeal-modal.active {
         display: flex;
@@ -878,6 +933,11 @@
         background: var(--success);
         color: white;
       }
+      .control-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none !important;
+      }
 
       /* ===================== SIDE PANELS ===================== */
       .side-panel {
@@ -1163,6 +1223,29 @@
         background: rgba(239, 68, 68, 0.2);
       }
 
+      /* ===================== SKELETON LOADING ===================== */
+      .skeleton {
+        background: linear-gradient(90deg, var(--dark-card) 25%, var(--dark-lighter) 50%, var(--dark-card) 75%);
+        background-size: 200% 100%;
+        animation: skeleton-loading 1.5s infinite;
+        border-radius: 4px;
+      }
+      @keyframes skeleton-loading {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+      .skeleton-avatar {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+      }
+      .skeleton-text {
+        height: 1em;
+        margin-bottom: 0.5em;
+      }
+      .skeleton-text.short { width: 60%; }
+      .skeleton-text.medium { width: 80%; }
+
       /* ===================== AGE VERIFY MODAL ===================== */
       .age-verify-modal {
         position: fixed;
@@ -1308,6 +1391,36 @@
         text-transform: uppercase;
         letter-spacing: 1px;
       }
+      
+      /* Network Quality Bars */
+      .network-quality {
+        display: flex;
+        align-items: flex-end;
+        gap: 3px;
+        height: 16px;
+        margin-left: 5px;
+      }
+      .network-bar {
+        width: 4px;
+        background: var(--text-muted);
+        border-radius: 2px;
+      }
+      .network-bar:nth-child(1) { height: 30%; }
+      .network-bar:nth-child(2) { height: 60%; }
+      .network-bar:nth-child(3) { height: 100%; }
+      
+      .network-quality.excellent .network-bar { background: var(--success); }
+      .network-quality.good .network-bar:nth-child(1),
+      .network-quality.good .network-bar:nth-child(2) { background: var(--success); opacity: 1; }
+      .network-quality.good .network-bar:nth-child(3) { background: var(--success); opacity: 0.3; }
+      
+      .network-quality.poor .network-bar { background: var(--warning); opacity: 0.5; }
+      .network-quality.poor .network-bar:nth-child(1) { opacity: 1; height: 30%; }
+      .network-quality.poor .network-bar:nth-child(2) { opacity: 1; height: 30%; }
+      .network-quality.poor .network-bar:nth-child(3) { opacity: 0.2; }
+      
+      .network-quality.bad .network-bar { background: var(--danger); opacity: 0.5; }
+      .network-quality.bad .network-bar:nth-child(1) { opacity: 1; }
 
       /* ===================== FABs ===================== */
       .fab {
@@ -1623,17 +1736,17 @@
   </head>
   <body>
     <!-- Loading Screen -->
-    <div id="loadingScreen">
+    <div id="loadingScreen" role="status" aria-live="polite">
       <div class="loading-spinner"></div>
       <div class="loading-text">Loading Omevo...</div>
     </div>
 
     <!-- Ban Overlay -->
-    <div id="banOverlay">
+    <div id="banOverlay" role="alertdialog" aria-labelledby="banTitle" aria-describedby="banDesc">
       <div class="ban-bg-noise"></div>
       <div class="ban-scanline"></div>
       <div class="ban-container">
-        <div class="ban-stamp">BANNED</div>
+        <div class="ban-stamp" id="banTitle">BANNED</div>
         <div class="ban-reason-frame">
           <div class="ban-reason-label">Reason for Suspension</div>
           <div class="ban-reason-icon"><i class="fas fa-exclamation-triangle" style="color:var(--danger)"></i></div>
@@ -1647,7 +1760,7 @@
           <div class="ban-price-amount">&pound;4.99</div>
           <div class="ban-price-sub">One-time payment &middot; Instant removal</div>
         </div>
-        <div class="crypto-icons">
+        <div class="crypto-icons" aria-label="Accepted Cryptocurrencies">
           <div class="crypto-icon btc" title="Bitcoin">BTC</div>
           <div class="crypto-icon eth" title="Ethereum">ETH</div>
           <div class="crypto-icon ltc" title="Litecoin">LTC</div>
@@ -1666,11 +1779,12 @@
     </div>
 
     <!-- Appeal Modal -->
-    <div class="appeal-modal" id="appealModal">
+    <div class="appeal-modal" id="appealModal" role="dialog" aria-labelledby="appealTitle">
       <div class="appeal-content">
-        <h3>Submit Appeal</h3>
+        <h3 id="appealTitle">Submit Appeal</h3>
         <p>Explain why you believe this ban was issued in error. Appeals are reviewed within 48 hours.</p>
-        <textarea class="appeal-textarea" id="appealText" placeholder="Describe your situation... (min 10 characters)" maxlength="500"></textarea>
+        <label for="appealText" style="display:none;">Appeal Message</label>
+        <textarea class="appeal-textarea" id="appealText" placeholder="Describe your situation... (min 10 characters)" maxlength="500" aria-required="true"></textarea>
         <div style="text-align:right;margin-top:4px;"><span style="font-size:0.75rem;color:var(--text-muted);" id="appealCharCount">0 / 500</span></div>
         <div class="appeal-actions">
           <button class="btn" style="background:var(--dark);color:var(--text)" onclick="closeAppealModal()">Cancel</button>
@@ -1680,15 +1794,15 @@
     </div>
 
     <!-- Age Verify Modal -->
-    <div class="age-verify-modal" id="ageVerifyModal">
+    <div class="age-verify-modal" id="ageVerifyModal" role="dialog" aria-labelledby="ageVerifyTitle">
       <div class="age-verify-content">
         <div style="font-size:3rem;margin-bottom:16px;"><i class="fas fa-id-card" style="color:var(--success)"></i></div>
-        <h3>Age Verification</h3>
+        <h3 id="ageVerifyTitle">Age Verification</h3>
         <p>You must be at least 18 years old to use video chat features. Please confirm your date of birth.</p>
         <div class="age-input-group">
-          <input type="number" class="age-input" id="ageDayInput" placeholder="DD" min="1" max="31" />
-          <input type="number" class="age-input" id="ageMonthInput" placeholder="MM" min="1" max="12" />
-          <input type="number" class="age-input" id="ageYearInput" placeholder="YYYY" min="1920" max="2010" />
+          <input type="number" class="age-input" id="ageDayInput" placeholder="DD" min="1" max="31" aria-label="Day" />
+          <input type="number" class="age-input" id="ageMonthInput" placeholder="MM" min="1" max="12" aria-label="Month" />
+          <input type="number" class="age-input" id="ageYearInput" placeholder="YYYY" min="1920" max="2010" aria-label="Year" />
         </div>
         <div style="display:flex;gap:12px;justify-content:center;">
           <button class="btn" style="background:var(--dark);color:var(--text)" onclick="closeAgeVerifyModal()">Cancel</button>
@@ -1698,7 +1812,7 @@
     </div>
 
     <!-- Unban Success Overlay -->
-    <div id="unbanSuccessOverlay">
+    <div id="unbanSuccessOverlay" role="status">
       <div class="success-check"><i class="fas fa-check"></i></div>
       <h2 style="font-size:2rem;font-weight:800;margin-bottom:10px;">Account Restored</h2>
       <p style="color:var(--text-dim);margin-bottom:30px;font-size:1.1rem;">Your suspension has been lifted. Welcome back!</p>
@@ -1706,10 +1820,10 @@
     </div>
 
     <!-- Permission Overlay -->
-    <div id="permissionOverlay" class="hidden">
+    <div id="permissionOverlay" class="hidden" role="dialog" aria-labelledby="permTitle">
       <div class="permission-card">
         <div class="permission-icon"><i class="fas fa-video"></i></div>
-        <h2 class="permission-title">Camera &amp; Microphone Required</h2>
+        <h2 class="permission-title" id="permTitle">Camera &amp; Microphone Required</h2>
         <p class="permission-description">Omevo needs access to your camera and microphone to connect you with others through video chat. Your privacy is important to us.</p>
         <div class="permission-features">
           <div class="permission-feature"><i class="fas fa-check-circle"></i><div class="permission-feature-text">HD Video Quality</div></div>
@@ -1724,7 +1838,7 @@
       </div>
     </div>
 
-    <canvas id="bgCanvas"></canvas>
+    <canvas id="bgCanvas" aria-hidden="true"></canvas>
 
     <!-- Main App -->
     <div id="app">
@@ -1743,8 +1857,8 @@
         </div>
         <div id="localVideoWrapper">
           <div id="localVideo" style="width:100%;height:100%;"></div>
-          <button id="pipBtn" title="PiP"><i class="fas fa-external-link-alt"></i></button>
-          <button id="resetPositionBtn" title="Reset Position"><i class="fas fa-compress"></i></button>
+          <button id="pipBtn" title="Picture in Picture" aria-label="Toggle Picture in Picture"><i class="fas fa-external-link-alt"></i></button>
+          <button id="resetPositionBtn" title="Reset Position" aria-label="Reset Video Position"><i class="fas fa-compress"></i></button>
         </div>
         <div id="partnerInfo">
           <div class="name">
@@ -1760,25 +1874,37 @@
         <div id="statsBar">
           <div class="stat-item"><div class="stat-value" id="matchCount">0</div><div class="stat-label">Matches</div></div>
           <div class="stat-item"><div class="stat-value" id="timeCount">0:00</div><div class="stat-label">Time</div></div>
-          <div class="stat-item"><div class="stat-value" id="levelCount">1</div><div class="stat-label">Level</div></div>
+          <div class="stat-item">
+             <div class="stat-value" id="levelCount">1</div>
+             <div class="stat-label">Level</div>
+          </div>
+          <div class="stat-item" style="position:relative;">
+            <div class="stat-label">Signal</div>
+            <div class="network-quality excellent" id="networkQuality" title="Network Quality">
+              <div class="network-bar"></div>
+              <div class="network-bar"></div>
+              <div class="network-bar"></div>
+            </div>
+          </div>
         </div>
-        <div id="controls">
+        <div id="controls" role="toolbar" aria-label="Video Call Controls">
           <div id="startControls" style="display:flex;gap:8px;">
-            <button class="control-btn primary" id="startBtn" title="Start Chatting"><i class="fas fa-play"></i></button>
-            <button class="control-btn" id="giftsBtn" title="Send Gift"><i class="fas fa-gift"></i></button>
-            <button class="control-btn" id="effectsBtn" title="Video Effects"><i class="fas fa-magic"></i></button>
+            <button class="control-btn primary" id="startBtn" title="Start Chatting" aria-label="Start Chatting"><i class="fas fa-play"></i></button>
+            <button class="control-btn" id="giftsBtn" title="Send Gift" aria-label="Send Gift"><i class="fas fa-gift"></i></button>
+            <button class="control-btn" id="effectsBtn" title="Video Effects" aria-label="Video Effects"><i class="fas fa-magic"></i></button>
           </div>
           <div id="activeControls" style="display:none;gap:8px;">
-            <button class="control-btn" id="nextBtn" title="Next (Skip)"><i class="fas fa-forward"></i></button>
-            <button class="control-btn" id="chatBtn" title="Chat"><i class="fas fa-comment"></i></button>
-            <button class="control-btn" id="reportBtn" title="Report"><i class="fas fa-flag"></i></button>
-            <button class="control-btn" id="likeBtn" title="Like"><i class="fas fa-heart"></i></button>
-            <button class="control-btn danger" id="stopBtn" title="Stop"><i class="fas fa-stop"></i></button>
-            <button class="control-btn" id="cameraBtn" title="Switch Camera"><i class="fas fa-camera"></i></button>
-            <button class="control-btn" id="layoutBtn" title="Change Layout"><i class="fas fa-columns"></i></button>
+            <button class="control-btn" id="nextBtn" title="Next (Skip)" aria-label="Next Partner"><i class="fas fa-forward"></i></button>
+            <button class="control-btn" id="chatBtn" title="Chat" aria-label="Open Chat"><i class="fas fa-comment"></i></button>
+            <button class="control-btn" id="screenShareBtn" title="Share Screen" aria-label="Share Screen"><i class="fas fa-desktop"></i></button>
+            <button class="control-btn" id="reportBtn" title="Report" aria-label="Report User"><i class="fas fa-flag"></i></button>
+            <button class="control-btn" id="likeBtn" title="Like" aria-label="Like User"><i class="fas fa-heart"></i></button>
+            <button class="control-btn danger" id="stopBtn" title="Stop" aria-label="Stop Call"><i class="fas fa-stop"></i></button>
+            <button class="control-btn" id="cameraBtn" title="Switch Camera" aria-label="Switch Camera"><i class="fas fa-camera"></i></button>
+            <button class="control-btn" id="layoutBtn" title="Change Layout" aria-label="Change Layout"><i class="fas fa-columns"></i></button>
           </div>
         </div>
-        <div class="effects-panel" id="effectsPanel">
+        <div class="effects-panel" id="effectsPanel" role="menu">
           <button class="effect-btn" data-effect="none" title="No Effect"><i class="fas fa-ban"></i></button>
           <button class="effect-btn" data-effect="blur" title="Blur"><i class="fas fa-eye-slash"></i></button>
           <button class="effect-btn" data-effect="grayscale" title="B&amp;W"><i class="fas fa-adjust"></i></button>
@@ -1790,14 +1916,14 @@
     </div>
 
     <!-- Settings Panel -->
-    <div class="side-panel left" id="settingsPanel">
+    <div class="side-panel left" id="settingsPanel" role="dialog" aria-label="Settings">
       <div class="panel-header">
         <h2>Settings</h2>
-        <button class="control-btn" onclick="toggleSettings()"><i class="fas fa-times"></i></button>
+        <button class="control-btn" onclick="toggleSettings()" aria-label="Close Settings"><i class="fas fa-times"></i></button>
       </div>
       <div class="panel-content">
         <div class="form-group">
-          <label>I am</label>
+          <label for="genderSelect">I am</label>
           <select class="form-control" id="genderSelect">
             <option value="male">Male</option>
             <option value="female">Female</option>
@@ -1805,7 +1931,7 @@
           </select>
         </div>
         <div class="form-group">
-          <label>Looking for</label>
+          <label for="lookingForSelect">Looking for</label>
           <select class="form-control" id="lookingForSelect">
             <option value="any">Anyone</option>
             <option value="male">Male</option>
@@ -1814,7 +1940,7 @@
           </select>
         </div>
         <div class="form-group">
-          <label>Location</label>
+          <label for="locationSelect">Location</label>
           <select class="form-control" id="locationSelect">
             <option value="any">Anywhere</option>
             <option value="nearby">Nearby</option>
@@ -1825,7 +1951,7 @@
           </select>
         </div>
         <div class="form-group">
-          <label>Interests (comma separated, max 5)</label>
+          <label for="interestsInput">Interests (comma separated, max 5)</label>
           <input type="text" class="form-control" id="interestsInput" placeholder="Music, Gaming, Sports..." />
         </div>
         <button class="btn btn-primary" onclick="saveSettings()" style="width:100%">Save Settings</button>
@@ -1833,27 +1959,29 @@
     </div>
 
     <!-- Profile Panel -->
-    <div class="side-panel right" id="profilePanel">
+    <div class="side-panel right" id="profilePanel" role="dialog" aria-label="Profile">
       <div class="panel-header">
         <h2>Profile</h2>
-        <button class="control-btn" onclick="toggleProfile()"><i class="fas fa-times"></i></button>
+        <button class="control-btn" onclick="toggleProfile()" aria-label="Close Profile"><i class="fas fa-times"></i></button>
       </div>
 
       <!-- Hero Section -->
       <div class="profile-hero">
         <div class="profile-avatar-ring" id="profileAvatarRing">
-          <div class="avatar-fallback" id="profileAvatarInner">
-            <i class="fas fa-user"></i>
+          <div class="avatar-fallback skeleton skeleton-avatar" id="profileAvatarInner">
+            <!-- Content loaded dynamically -->
           </div>
-          <div class="profile-avatar-edit" onclick="triggerAvatarUpload()" title="Change Avatar">
+          <div class="profile-avatar-edit" onclick="triggerAvatarUpload()" title="Change Avatar" role="button" tabindex="0">
             <i class="fas fa-camera"></i>
           </div>
         </div>
-        <input type="file" id="avatarFileInput" accept="image/*" style="display:none" onchange="handleAvatarUpload(event)" />
+        <input type="file" id="avatarFileInput" accept="image/*" style="display:none" onchange="handleAvatarUpload(event)" aria-hidden="true" />
         <div class="profile-name-row">
-          <span class="profile-display-name" id="profileDisplayName">Guest User</span>
+          <span class="profile-display-name" id="profileDisplayName">
+             <span class="skeleton skeleton-text" style="width:80px;height:1em;display:inline-block;"></span>
+          </span>
           <span class="profile-provider-badge unknown" id="profileProviderBadge">
-            <i class="fas fa-circle"></i> Guest
+            <i class="fas fa-circle"></i> <span class="skeleton skeleton-text" style="width:40px;height:0.8em;display:inline-block;"></span>
           </span>
         </div>
         <div class="profile-email" id="profileEmailRow" style="display:none;">
@@ -1949,14 +2077,14 @@
     </div>
 
     <!-- Edit Name Modal -->
-    <div class="modal" id="editNameModal">
+    <div class="modal" id="editNameModal" role="dialog" aria-labelledby="editNameTitle">
       <div class="modal-content">
         <div class="modal-header">
-          <h3>Edit Display Name</h3>
-          <button class="control-btn" onclick="closeEditNameModal()"><i class="fas fa-times"></i></button>
+          <h3 id="editNameTitle">Edit Display Name</h3>
+          <button class="control-btn" onclick="closeEditNameModal()" aria-label="Close"><i class="fas fa-times"></i></button>
         </div>
         <div class="form-group">
-          <label>Display Name (max 20 characters)</label>
+          <label for="editNameInput">Display Name (max 20 characters)</label>
           <input type="text" class="form-control" id="editNameInput" placeholder="Enter new name" maxlength="20" />
         </div>
         <div style="display:flex;gap:12px;justify-content:flex-end;">
@@ -1967,32 +2095,34 @@
     </div>
 
     <!-- Chat Panel -->
-    <div id="chatPanel" class="side-panel right" style="display:flex;flex-direction:column;">
+    <div id="chatPanel" class="side-panel right" style="display:flex;flex-direction:column;" role="dialog" aria-label="Chat">
       <div class="panel-header">
         <h3>Chat</h3>
-        <button class="control-btn" onclick="toggleChat()"><i class="fas fa-times"></i></button>
+        <button class="control-btn" onclick="toggleChat()" aria-label="Close Chat"><i class="fas fa-times"></i></button>
       </div>
-      <div class="chat-messages" id="chatMessages" style="padding:20px;flex:1;overflow-y:auto;"></div>
+      <div class="chat-messages" id="chatMessages" style="padding:20px;flex:1;overflow-y:auto;" aria-live="polite"></div>
+      <div id="typingIndicator" style="padding:0 20px 5px;font-size:0.8rem;color:var(--text-muted);height:18px;display:none;">Stranger is typing...</div>
       <div style="padding:15px;border-top:1px solid var(--glass-border);display:flex;gap:10px;">
+        <label for="messageInput" style="display:none;">Message</label>
         <input type="text" id="messageInput" placeholder="Type a message..." style="flex:1;padding:10px 15px;background:var(--dark);border:1px solid var(--glass-border);border-radius:25px;color:var(--text);font-family:inherit;" maxlength="500" />
-        <button onclick="sendMessage()" style="width:40px;height:40px;border-radius:50%;border:none;background:var(--primary);color:white;cursor:pointer;flex-shrink:0;"><i class="fas fa-paper-plane"></i></button>
+        <button onclick="sendMessage()" style="width:40px;height:40px;border-radius:50%;border:none;background:var(--primary);color:white;cursor:pointer;flex-shrink:0;" aria-label="Send Message"><i class="fas fa-paper-plane"></i></button>
       </div>
     </div>
 
     <!-- Report Modal -->
-    <div class="modal" id="reportModal">
+    <div class="modal" id="reportModal" role="dialog" aria-labelledby="reportTitle">
       <div class="modal-content">
-        <div class="modal-header"><h3>Report User</h3></div>
-        <div class="report-reasons">
-          <div class="report-option" data-reason="Inappropriate behavior during video chat"><i class="fas fa-user-times" style="color:var(--danger)"></i> Inappropriate Behavior</div>
-          <div class="report-option" data-reason="Spamming links or scam attempts"><i class="fas fa-ban" style="color:var(--warning)"></i> Spam or Scam</div>
-          <div class="report-option" data-reason="Appears to be under 18 years old"><i class="fas fa-child" style="color:var(--primary)"></i> Underage User</div>
-          <div class="report-option" data-reason="Threats or violent behavior"><i class="fas fa-fist-raised" style="color:var(--danger)"></i> Violence or Threats</div>
-          <div class="report-option" data-reason="Exposing nudity or sexual content"><i class="fas fa-eye-slash" style="color:var(--danger)"></i> Nudity or Sexual Content</div>
-          <div class="report-option" data-reason="Other rule violation"><i class="fas fa-exclamation-triangle" style="color:var(--warning)"></i> Other</div>
+        <div class="modal-header"><h3 id="reportTitle">Report User</h3></div>
+        <div class="report-reasons" role="listbox" aria-label="Report Reasons">
+          <div class="report-option" data-reason="Inappropriate behavior during video chat" role="option"><i class="fas fa-user-times" style="color:var(--danger)"></i> Inappropriate Behavior</div>
+          <div class="report-option" data-reason="Spamming links or scam attempts" role="option"><i class="fas fa-ban" style="color:var(--warning)"></i> Spam or Scam</div>
+          <div class="report-option" data-reason="Appears to be under 18 years old" role="option"><i class="fas fa-child" style="color:var(--primary)"></i> Underage User</div>
+          <div class="report-option" data-reason="Threats or violent behavior" role="option"><i class="fas fa-fist-raised" style="color:var(--danger)"></i> Violence or Threats</div>
+          <div class="report-option" data-reason="Exposing nudity or sexual content" role="option"><i class="fas fa-eye-slash" style="color:var(--danger)"></i> Nudity or Sexual Content</div>
+          <div class="report-option" data-reason="Other rule violation" role="option"><i class="fas fa-exclamation-triangle" style="color:var(--warning)"></i> Other</div>
         </div>
         <div class="form-group">
-          <label>Additional details (optional)</label>
+          <label for="reportDetails">Additional details (optional)</label>
           <textarea class="form-control" id="reportDetails" rows="3" placeholder="Provide more information..." maxlength="200"></textarea>
         </div>
         <div style="display:flex;gap:10px;">
@@ -2003,11 +2133,11 @@
     </div>
 
     <!-- Gifts Modal -->
-    <div class="modal" id="giftsModal">
+    <div class="modal" id="giftsModal" role="dialog" aria-label="Send Gift">
       <div class="modal-content">
         <div class="modal-header">
           <h3>Send a Gift</h3>
-          <button class="control-btn" onclick="closeGiftsModal()"><i class="fas fa-times"></i></button>
+          <button class="control-btn" onclick="closeGiftsModal()" aria-label="Close"><i class="fas fa-times"></i></button>
         </div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px;padding:20px;">
           <button class="gift-btn" onclick="sendGift('rose',10)" style="padding:20px;background:var(--dark);border:2px solid transparent;border-radius:12px;cursor:pointer;"><div style="font-size:2.5rem;margin-bottom:5px;">&#127801;</div><div style="font-weight:600;">Rose</div><div style="color:var(--text-dim);font-size:0.9rem;">10 coins</div></button>
@@ -2021,29 +2151,36 @@
     </div>
 
     <!-- Payment Modal (Coins) -->
-    <div class="payment-modal" id="paymentModal">
+    <div class="payment-modal" id="paymentModal" role="dialog" aria-label="Purchase Coins">
       <div class="payment-content">
         <div class="modal-header"><h3>Get Coins</h3></div>
         <div class="coins-display"><i class="fas fa-coins"></i> <span id="currentCoins">0</span></div>
         <div class="coin-packages">
-          <div class="coin-package" data-coins="100" data-price="4.99"><div class="coin-amount">100</div><div class="coin-price">$4.99</div></div>
-          <div class="coin-package" data-coins="250" data-price="9.99"><div class="coin-amount">250</div><div class="coin-price">$9.99</div></div>
-          <div class="coin-package" data-coins="500" data-price="19.99"><div class="coin-amount">500</div><div class="coin-price">$19.99</div></div>
-          <div class="coin-package" data-coins="1000" data-price="39.99"><div class="coin-amount">1000</div><div class="coin-price">$39.99</div></div>
+          <div class="coin-package" data-coins="100" data-price="4.99" role="button" tabindex="0"><div class="coin-amount">100</div><div class="coin-price">$4.99</div></div>
+          <div class="coin-package" data-coins="250" data-price="9.99" role="button" tabindex="0"><div class="coin-amount">250</div><div class="coin-price">$9.99</div></div>
+          <div class="coin-package" data-coins="500" data-price="19.99" role="button" tabindex="0"><div class="coin-amount">500</div><div class="coin-price">$19.99</div></div>
+          <div class="coin-package" data-coins="1000" data-price="39.99" role="button" tabindex="0"><div class="coin-amount">1000</div><div class="coin-price">$39.99</div></div>
         </div>
         <button class="btn btn-primary" onclick="purchaseCoins()" style="width:100%;margin-top:20px;">Purchase Coins</button>
       </div>
     </div>
 
-    <button class="fab" id="settingsFab" onclick="toggleSettings()" title="Settings"><i class="fas fa-cog"></i></button>
-    <button class="fab" id="profileFab" onclick="toggleProfile()" title="Profile"><i class="fas fa-user"></i></button>
+    <button class="fab" id="settingsFab" onclick="toggleSettings()" title="Settings" aria-label="Open Settings"><i class="fas fa-cog"></i></button>
+    <button class="fab" id="profileFab" onclick="toggleProfile()" title="Profile" aria-label="Open Profile"><i class="fas fa-user"></i></button>
 
     <script>
-      /* ===================== CONFIG ===================== */
-      // Note: In production, sensitive keys should be handled via backend proxies where possible.
-      const BACKEND = "https://term-production-bf65.up.railway.app";
-      const AGORA_APP_ID = "0f9094ed4a8e4dea934059b0ea8b5182";
-      const STRIPE_PUBLISHABLE_KEY = "pk_test_your_stripe_key_here";
+      /* ===================== CONFIGURATION ===================== */
+      'use strict';
+
+      const CONFIG = {
+        BACKEND: "https://term-production-bf65.up.railway.app",
+        AGORA_APP_ID: "0f9094ed4a8e4dea934059b0ea8b5182",
+        STRIPE_PUBLISHABLE_KEY: "pk_test_your_stripe_key_here",
+        DEBUG_MODE: true,
+        MODERATION_INTERVAL: 2000,
+        MAX_RETRIES: 3,
+        HEARTBEAT_INTERVAL: 5000
+      };
 
       const urlParams = new URLSearchParams(window.location.search);
       const urlToken = urlParams.get("token");
@@ -2052,10 +2189,11 @@
         window.history.replaceState({}, document.title, window.location.pathname);
       }
 
+      // State Management
       let token = localStorage.getItem("token");
       let socket = null;
       let client = null;
-      let localTracks = { videoTrack: null, audioTrack: null };
+      let localTracks = { videoTrack: null, audioTrack: null, screenTrack: null };
       let currentRoom = null;
       let partnerId = null;
       let isMatching = false;
@@ -2069,11 +2207,13 @@
       let selectedCoinPackage = null;
       let userCoins = 0;
       let moderationInterval = null;
+      let isScreenSharing = false;
+      let heartbeatInterval = null;
       
-      // Initialize Stripe globally for better performance
+      // Initialize Stripe globally
       let stripe = null;
       if(typeof Stripe !== 'undefined') {
-        stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
+        stripe = Stripe(CONFIG.STRIPE_PUBLISHABLE_KEY);
       }
       
       let banData = null;
@@ -2128,12 +2268,24 @@
         requestAnimationFrame(animBg);
       })();
 
+      /* ===================== DEBUG & LOGGING ===================== */
+      function log(msg, type) {
+        if (!CONFIG.DEBUG_MODE) return;
+        type = type || 'info';
+        const prefix = '[Omevo]';
+        if(type === 'error') console.error(prefix, msg);
+        else if(type === 'warn') console.warn(prefix, msg);
+        else console.log(prefix, msg);
+      }
+
       /* ===================== HELPERS ===================== */
       function showToast(msg, type, title) {
         type = type || "info";
         title = title || "";
         var t = document.createElement("div");
         t.className = "toast " + type;
+        t.setAttribute("role", "alert");
+        t.setAttribute("aria-live", "assertive");
         var icons = { success: "fa-check", error: "fa-times", info: "fa-info" };
         t.innerHTML = '<div class="toast-icon"><i class="fas ' + (icons[type] || icons.info) + '"></i></div><div class="toast-content">' + (title ? '<div class="toast-title">' + title + '</div>' : '') + '<div class="toast-message">' + msg + '</div></div>';
         document.body.appendChild(t);
@@ -2210,7 +2362,7 @@
         btn.innerHTML = '<i class="fas fa-spinner fa-spin btn-icon"></i> Processing...';
         try {
           if (!state.user || !state.user.id) throw new Error("User not identified");
-          var r = await fetch(BACKEND + "/api/pay-unban", {
+          var r = await fetch(CONFIG.BACKEND + "/api/pay-unban", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ userId: String(state.user.id) })
@@ -2242,7 +2394,7 @@
         btn.disabled = true;
         btn.textContent = "Submitting...";
         try {
-          var r = await fetch(BACKEND + "/api/moderation/appeal", {
+          var r = await fetch(CONFIG.BACKEND + "/api/moderation/appeal", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
             body: JSON.stringify({ message: msg })
@@ -2270,6 +2422,7 @@
 
         // Avatar
         var avatarInner = document.getElementById("profileAvatarInner");
+        avatarInner.classList.remove('skeleton', 'skeleton-avatar');
         if (user.avatar && (user.avatar.startsWith("http") || user.avatar.startsWith("data:"))) {
           avatarInner.innerHTML = '<img src="' + user.avatar + '" alt="Avatar" onerror="this.parentElement.innerHTML=\'<i class=\\\'fas fa-user\\\'></i>\';this.parentElement.className=\\\'avatar-fallback\\\'" />';
           avatarInner.className = "";
@@ -2360,7 +2513,7 @@
         reader.onload = async function (e) {
           var base64 = e.target.result;
           try {
-            var response = await fetch(BACKEND + "/api/user/avatar", {
+            var response = await fetch(CONFIG.BACKEND + "/api/user/avatar", {
               method: "POST",
               headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
               body: JSON.stringify({ avatarBase64: base64 })
@@ -2396,7 +2549,7 @@
         var name = document.getElementById("editNameInput").value.trim();
         if (!name) { showToast("Name cannot be empty", "error"); return; }
         try {
-          var r = await fetch(BACKEND + "/user/display-name", {
+          var r = await fetch(CONFIG.BACKEND + "/user/display-name", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
             body: JSON.stringify({ display_name: name })
@@ -2445,7 +2598,7 @@
         btn.disabled = true;
         btn.textContent = "Verifying...";
         try {
-          var r = await fetch(BACKEND + "/api/user/verify-age", {
+          var r = await fetch(CONFIG.BACKEND + "/api/user/verify-age", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
             body: JSON.stringify({ age: age })
@@ -2467,7 +2620,7 @@
       async function checkBanStatus() {
         if (!token) return false;
         try {
-          var r = await fetch(BACKEND + "/auth/me", { headers: { Authorization: "Bearer " + token } });
+          var r = await fetch(CONFIG.BACKEND + "/auth/me", { headers: { Authorization: "Bearer " + token } });
           var d = await r.json();
           if (d.authenticated && d.user) {
             state.user = d.user;
@@ -2553,6 +2706,65 @@
         }
       }
 
+      /* ===================== SCREEN SHARING ===================== */
+      async function startScreenShare() {
+        if(isScreenSharing) return;
+        if(!client || !isInCall) {
+            showToast("Start a call first", "error");
+            return;
+        }
+        
+        const screenShareBtn = document.getElementById("screenShareBtn");
+        
+        try {
+            const screenTrack = await AgoraRTC.createScreenVideoTrack({
+                encoderConfig: "1080p_2"
+            }, "disable");
+            
+            localTracks.screenTrack = screenTrack;
+            
+            // Add event listener for when user stops sharing via browser UI
+            screenTrack.on("track-ended", () => {
+                stopScreenShare();
+            });
+            
+            await client.publish(screenTrack);
+            isScreenSharing = true;
+            
+            screenShareBtn.classList.add("active");
+            screenShareBtn.title = "Stop Sharing";
+            showToast("Screen sharing started", "success");
+            
+        } catch (error) {
+            console.error("Screen share error:", error);
+            showToast("Could not start screen share", "error");
+        }
+      }
+
+      async function stopScreenShare() {
+        if(!isScreenSharing || !localTracks.screenTrack) return;
+        
+        try {
+            await client.unpublish(localTracks.screenTrack);
+            localTracks.screenTrack.close();
+            localTracks.screenTrack = null;
+            isScreenSharing = false;
+            
+            const screenShareBtn = document.getElementById("screenShareBtn");
+            screenShareBtn.classList.remove("active");
+            screenShareBtn.title = "Share Screen";
+            showToast("Screen sharing stopped", "info");
+            
+        } catch (error) {
+            console.error("Error stopping screen share:", error);
+        }
+      }
+
+      function toggleScreenShare() {
+          if(isScreenSharing) stopScreenShare();
+          else startScreenShare();
+      }
+
       /* ===================== PANELS ===================== */
       function toggleSettings() { document.getElementById("settingsPanel").classList.toggle("open"); }
       function toggleProfile() {
@@ -2566,9 +2778,14 @@
       /* ===================== SOCKET ===================== */
       function initSocket() {
         if (socket && socket.connected) return;
-        socket = io(BACKEND);
-        socket.on("connect", function () { if (token) socket.emit("auth", { token: token }); });
-        socket.on("authenticated", function (d) { console.log("Auth:", d.userId); });
+        socket = io(CONFIG.BACKEND);
+        
+        socket.on("connect", function () { 
+          if (token) socket.emit("auth", { token: token }); 
+        });
+        
+        socket.on("authenticated", function (d) { log("Socket Authenticated: " + d.userId); });
+        
         socket.on("match_found", function (d) {
           if (isMatching && !isInCall) {
             partnerId = d.peerId;
@@ -2577,21 +2794,35 @@
             startCall(d.channel, d.peerId);
           }
         });
+        
         socket.on("peer_left", function () { showToast("Partner disconnected", "info"); endCall(); });
+        
         socket.on("banned", function (d) { endCall(); showBanScreen(d.reason, d.until); });
+        
         socket.on("moderation_action", function (d) { if (d.banned) { endCall(); showBanScreen(d.reason, null); } });
+        
         socket.on("message", function (d) {
           var txt = d.text || d.message || "";
           var own = d.uid && state.user && String(d.uid) === String(state.user.id);
           addMessageToChat(txt, own, own ? "You" : (d.username || "Stranger"));
         });
+        
         socket.on("room_history", function (d) {
           if (d.messages) d.messages.forEach(function (m) {
             var own = m.uid && state.user && String(m.uid) === String(state.user.id);
             addMessageToChat(m.message || m.text, own, own ? "You" : "Stranger");
           });
         });
+        
         socket.on("report_submitted", function (d) { showToast(d.message || "Report submitted", "success"); });
+        
+        socket.on("typing", function(d) {
+             // Show typing indicator if the sender is not the current user
+             if(d.uid && state.user && String(d.uid) !== String(state.user.id)) {
+                 showTypingIndicator();
+             }
+        });
+        
         socket.on("error", function (d) { if (d.message) showToast(d.message, "error"); });
       }
 
@@ -2611,7 +2842,7 @@
             interests: state.preferences.interests,
             nickname: (state.user && (state.user.username || state.user.nickname)) || "User"
           };
-          var r = await fetch(BACKEND + "/queue/enqueue", {
+          var r = await fetch(CONFIG.BACKEND + "/queue/enqueue", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
             body: JSON.stringify(payload)
@@ -2626,7 +2857,7 @@
       async function checkForMatch() {
         if (!isMatching || isInCall) return;
         try {
-          var r = await fetch(BACKEND + "/queue/check", { headers: { Authorization: "Bearer " + token } });
+          var r = await fetch(CONFIG.BACKEND + "/queue/check", { headers: { Authorization: "Bearer " + token } });
           if (!r.ok) return;
           var d = await r.json();
           if (d.matched) { partnerId = d.peerId; currentRoom = d.channel; updatePartnerInfo(d.peerInfo); startCall(d.channel, d.peerId); }
@@ -2638,7 +2869,7 @@
         isMatching = false;
         document.getElementById("blurOverlay").classList.remove("active");
         document.getElementById("startControls").style.display = "flex";
-        fetch(BACKEND + "/queue/leave", { method: "POST", headers: { Authorization: "Bearer " + token } }).catch(function () {});
+        fetch(CONFIG.BACKEND + "/queue/leave", { method: "POST", headers: { Authorization: "Bearer " + token } }).catch(function () {});
       }
 
       /* ===================== CALL ===================== */
@@ -2653,7 +2884,7 @@
         matchTimer = setInterval(updateTimer, 1000);
         try {
           var uid = Math.floor(Math.random() * 100000);
-          var tr = await fetch(BACKEND + "/generateToken", {
+          var tr = await fetch(CONFIG.BACKEND + "/generateToken", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
             body: JSON.stringify({ channelName: channelName, uid: uid, role: "publisher", expirySeconds: 3600 })
@@ -2661,10 +2892,12 @@
           if (!tr.ok) { var e = await tr.json(); throw new Error(e.error || "Token failed"); }
           var td = await tr.json();
           client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
-          await client.join(td.appID || AGORA_APP_ID, channelName, td.rtcToken, uid);
+          await client.join(td.appID || CONFIG.AGORA_APP_ID, channelName, td.rtcToken, uid);
+          
           if (!localTracks.audioTrack) localTracks.audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
           if (!localTracks.videoTrack) localTracks.videoTrack = await AgoraRTC.createCameraVideoTrack();
           await client.publish([localTracks.audioTrack, localTracks.videoTrack]);
+          
           client.on("user-published", async function (user, mediaType) {
             await client.subscribe(user, mediaType);
             if (mediaType === "video") {
@@ -2673,13 +2906,32 @@
             }
             if (mediaType === "audio") user.audioTrack.play();
           });
+          
           client.on("user-unpublished", function (u, m) { if (m === "video") document.getElementById("remoteVideo").srcObject = null; });
+          
+          // Network Quality
+          client.on("network-quality", function(stats) {
+             updateNetworkUI(stats.downlinkNetworkQuality);
+          });
+          
           socket.emit("join_room", { room: channelName });
           startModerationLoop(channelName);
           state.stats.matches++;
           updateStats();
           showToast("Connected!", "success");
         } catch (e) { console.error("Call error:", e); showToast("Failed: " + e.message, "error"); endCall(); }
+      }
+
+      function updateNetworkUI(quality) {
+          // Agora Quality: 0(Unknown), 1(Excellent), 2(Good), 3(Poor), 4(Bad), 5(VBad), 6(Down)
+          const el = document.getElementById('networkQuality');
+          el.className = 'network-quality';
+          
+          if(quality <= 1) el.classList.add('excellent');
+          else if(quality === 2) el.classList.add('good');
+          else if(quality === 3) el.classList.add('poor');
+          else if(quality >= 4) el.classList.add('bad');
+          else el.classList.add('poor'); // Unknown fallback
       }
 
       function updatePartnerInfo(d) {
@@ -2697,8 +2949,11 @@
       function endCall() {
         isInCall = false;
         isMatching = false;
+        isScreenSharing = false;
+        
         if (matchTimer) { clearInterval(matchTimer); matchTimer = null; }
         if (moderationInterval) { clearInterval(moderationInterval); moderationInterval = null; }
+        
         currentLayout = "float";
         document.getElementById("videoContainer").classList.remove("split-mode");
         document.getElementById("activeControls").style.display = "none";
@@ -2707,6 +2962,16 @@
         document.getElementById("chatPanel").classList.remove("open");
         document.getElementById("chatMessages").innerHTML = "";
         document.getElementById("remoteVideo").srcObject = null;
+        
+        // Reset Screen Share State
+        if(localTracks.screenTrack) {
+            localTracks.screenTrack.close();
+            localTracks.screenTrack = null;
+        }
+        const screenShareBtn = document.getElementById("screenShareBtn");
+        screenShareBtn.classList.remove("active");
+        screenShareBtn.title = "Share Screen";
+        
         if (client) { try { client.leave(); } catch (e) { /* silent */ } client = null; }
         if (socket && currentRoom) socket.emit("leave_room", { room: currentRoom });
         document.getElementById("timeCount").textContent = "0:00";
@@ -2729,7 +2994,7 @@
             mx.drawImage(v, 0, 0, 320, 240);
             socket.emit("video_frame", { frameBase64: mc.toDataURL("image/jpeg", 0.7), roomId: roomId });
           } catch (e) { /* silent */ }
-        }, 2000);
+        }, CONFIG.MODERATION_INTERVAL);
       }
 
       /* ===================== CHAT ===================== */
@@ -2753,7 +3018,20 @@
         c.scrollTop = c.scrollHeight;
       }
 
-      document.getElementById("messageInput").addEventListener("keydown", function (e) { if (e.key === "Enter") sendMessage(); });
+      function showTypingIndicator() {
+          const el = document.getElementById("typingIndicator");
+          el.style.display = "block";
+          // Hide after 3 seconds
+          setTimeout(() => { el.style.display = "none"; }, 3000);
+      }
+
+      document.getElementById("messageInput").addEventListener("keydown", function (e) { 
+          if (e.key === "Enter") sendMessage();
+          // Emit typing event
+          if(socket && socket.connected && currentRoom) {
+              socket.emit("typing", { room: currentRoom });
+          }
+      });
 
       /* ===================== REPORT ===================== */
       function openReportModal() { document.getElementById("reportModal").classList.add("active"); }
@@ -2783,7 +3061,7 @@
         if (!partnerId) { showToast("No partner", "error"); closeGiftsModal(); return; }
         if (userCoins < cost) { showToast("Need " + cost + " coins", "error"); closeGiftsModal(); return; }
         try {
-          var r = await fetch(BACKEND + "/api/user/spend-coins", {
+          var r = await fetch(CONFIG.BACKEND + "/api/user/spend-coins", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
             body: JSON.stringify({ coins: cost, type: "gift", giftType: type, recipientId: partnerId })
@@ -2815,7 +3093,7 @@
       async function purchaseCoins() {
         if (!selectedCoinPackage) { showToast("Select a package", "error"); return; }
         try {
-          var r = await fetch(BACKEND + "/api/create-checkout-session", {
+          var r = await fetch(CONFIG.BACKEND + "/api/create-checkout-session", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
             body: JSON.stringify(selectedCoinPackage)
@@ -2833,7 +3111,7 @@
       async function loadProfile() {
         if (!token) return;
         try {
-          var r = await fetch(BACKEND + "/user/profile", { headers: { Authorization: "Bearer " + token } });
+          var r = await fetch(CONFIG.BACKEND + "/user/profile", { headers: { Authorization: "Bearer " + token } });
           if (r.ok) {
             var user = await r.json();
             state.user = user;
@@ -2845,7 +3123,7 @@
       async function loadSettings() {
         if (!token) return;
         try {
-          var r = await fetch(BACKEND + "/api/user/preferences", { headers: { Authorization: "Bearer " + token } });
+          var r = await fetch(CONFIG.BACKEND + "/api/user/preferences", { headers: { Authorization: "Bearer " + token } });
           if (r.ok) {
             var p = await r.json();
             document.getElementById("genderSelect").value = p.gender || "male";
@@ -2865,7 +3143,7 @@
           nickname: (state.user && (state.user.username || state.user.nickname)) || "User"
         };
         try {
-          var r = await fetch(BACKEND + "/api/user/preferences", {
+          var r = await fetch(CONFIG.BACKEND + "/api/user/preferences", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
             body: JSON.stringify(payload)
@@ -2889,24 +3167,70 @@
       /* ===================== DRAG ===================== */
       function initDraggableVideo() {
         var w = document.getElementById("localVideoWrapper");
-        var drag = false, ix, iy;
-        var start = function (cx, cy) { if (currentLayout === "split") return; drag = true; ix = cx - (w.offsetLeft || 0); iy = cy - (w.offsetTop || 0); };
-        var move = function (cx, cy) { if (drag && currentLayout === "float") { w.style.right = "auto"; w.style.bottom = "auto"; w.style.left = (cx - ix) + "px"; w.style.top = (cy - iy) + "px"; } };
-        var end = function () { drag = false; };
-        w.addEventListener("mousedown", function (e) { start(e.clientX, e.clientY); });
-        w.addEventListener("touchstart", function (e) { var t = e.touches[0]; start(t.clientX, t.clientY); }, { passive: true });
+        var drag = false, ix, iy; 
+        var start = function (cx, cy) { if (currentLayout === "split") return; drag = true; ix =         cx - (w.offsetLeft || 0); 
+          iy = cy - (w.offsetTop || 0); 
+          w.style.transition = 'none'; // Disable transition during drag for 1:1 feel
+        };
+        
+        var move = function (cx, cy) {
+          if (!drag) return;
+          if (currentLayout === "float") {
+            var newX = cx - ix;
+            var newY = cy - iy;
+            
+            // Boundary checks to keep video on screen
+            var maxX = window.innerWidth - w.offsetWidth;
+            var maxY = window.innerHeight - w.offsetHeight;
+            
+            newX = Math.max(0, Math.min(newX, maxX));
+            newY = Math.max(0, Math.min(newY, maxY));
+            
+            w.style.right = "auto";
+            w.style.bottom = "auto";
+            w.style.left = newX + "px";
+            w.style.top = newY + "px";
+          }
+        };
+        
+        var end = function () {
+          if(drag) {
+              drag = false;
+              w.style.transition = ''; // Re-enable transition
+          }
+        };
+
+        w.addEventListener("mousedown", function (e) { 
+            // Prevent drag if clicking a button inside the wrapper
+            if(e.target.closest('button')) return;
+            start(e.clientX, e.clientY); 
+        });
+        w.addEventListener("touchstart", function (e) { 
+            if(e.target.closest('button')) return;
+            var t = e.touches[0]; 
+            start(t.clientX, t.clientY); 
+        }, { passive: true });
+        
         document.addEventListener("mousemove", function (e) { move(e.clientX, e.clientY); });
-        document.addEventListener("touchmove", function (e) { if (drag) move(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
+        document.addEventListener("touchmove", function (e) { 
+            if (drag) {
+                e.preventDefault(); // Prevent scrolling while dragging
+                move(e.touches[0].clientX, e.touches[0].clientY); 
+            }
+        }, { passive: false });
+        
         document.addEventListener("mouseup", end);
         document.addEventListener("touchend", end);
       }
 
       function resetVideoPosition() {
         var w = document.getElementById("localVideoWrapper");
+        w.style.transition = 'all 0.3s ease';
         w.style.right = "30px";
         w.style.bottom = "100px";
         w.style.left = "auto";
         w.style.top = "auto";
+        setTimeout(() => { w.style.transition = ''; }, 300);
       }
       
       /* ===================== PICTURE IN PICTURE ===================== */
@@ -2914,7 +3238,7 @@
         try {
           const videoElement = document.querySelector("#localVideo video");
           if (!videoElement) {
-            showToast("Video not available", "error");
+            showToast("Video stream not ready", "error");
             return;
           }
           
@@ -2922,21 +3246,27 @@
             await document.exitPictureInPicture();
             showToast("Exited Picture-in-Picture", "info");
           } else if (document.pictureInPictureEnabled) {
-            await videoElement.requestPictureInPicture();
-            showToast("Picture-in-Picture mode", "success");
+            // Ensure metadata is loaded before requesting PiP
+            if (videoElement.readyState >= 1) {
+                await videoElement.requestPictureInPicture();
+                showToast("Picture-in-Picture mode", "success");
+            } else {
+                showToast("Video initializing, please wait...", "info");
+            }
+          } else {
+            showToast("Picture-in-Picture not supported by this browser", "error");
           }
         } catch (error) {
           console.error("PiP Error:", error);
-          // PiP might not be supported or video metadata not loaded
           if(error.name === 'NotAllowedError') {
              showToast("Interaction required to start PiP", "error");
           } else {
-             showToast("Picture-in-Picture not supported", "error");
+             showToast("Could not toggle PiP", "error");
           }
         }
       }
 
-      /* ===================== INIT ===================== */
+      /* ===================== INITIALIZATION ===================== */
       async function initializeAfterAuth() {
         initDraggableVideo();
         initSocket();
@@ -2944,34 +3274,41 @@
         await loadProfile();
         updateStats();
 
-        // Payment success check
+        // Payment success check via URL params
         if (urlParams.get("payment") === "success") {
           var sid = urlParams.get("session_id");
           if (sid && token) {
             try {
-              var r = await fetch(BACKEND + "/api/verify-payment", {
+              var r = await fetch(CONFIG.BACKEND + "/api/verify-payment", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
                 body: JSON.stringify({ sessionId: sid })
               });
               if (r.ok) {
                 var d = await r.json();
-                if (d.success) { userCoins = d.coins; renderProfile(state.user); showToast("Coins added! " + d.coins + " total", "success"); }
+                if (d.success) { 
+                    userCoins = d.coins; 
+                    if(state.user) state.user.coins = d.coins;
+                    renderProfile(state.user); 
+                    showToast("Coins added! New balance: " + d.coins, "success"); 
+                }
               }
-            } catch (e) { /* silent */ }
+            } catch (e) { console.error(e); }
           }
           window.history.replaceState({}, document.title, window.location.pathname);
         }
+        
         if (urlParams.get("payment") === "cancelled") {
           showToast("Payment cancelled", "info");
           window.history.replaceState({}, document.title, window.location.pathname);
         }
+        
         if (urlParams.get("unban") === "success") {
           document.getElementById("unbanSuccessOverlay").classList.add("active");
           window.history.replaceState({}, document.title, window.location.pathname);
         }
 
-        // Coin package selection
+        // Coin package selection logic
         document.querySelectorAll(".coin-package").forEach(function (p) {
           p.addEventListener("click", function () {
             document.querySelectorAll(".coin-package").forEach(function (x) { x.classList.remove("selected"); });
@@ -2982,6 +3319,7 @@
       }
 
       async function init() {
+        // Check for unban redirect first
         if (urlParams.get("unban") === "success" && token) {
           var banned = await checkBanStatus();
           if (!banned) {
@@ -2991,19 +3329,24 @@
             return;
           }
         }
+        
+        // No token flow
         if (!token) {
           document.getElementById("loadingScreen").classList.add("hidden");
           document.getElementById("permissionOverlay").classList.remove("hidden");
           return;
         }
+        
+        // Standard auth flow
         document.getElementById("loadingScreen").classList.remove("hidden");
         var banned = await checkBanStatus();
-        if (banned) return;
+        if (banned) return; // Ban screen handles UI
+        
         document.getElementById("loadingScreen").classList.add("hidden");
         document.getElementById("permissionOverlay").classList.remove("hidden");
       }
 
-      /* ===================== EVENTS ===================== */
+      /* ===================== EVENT LISTENERS ===================== */
       document.getElementById("startBtn").addEventListener("click", startMatching);
       document.getElementById("stopBtn").addEventListener("click", endCall);
       document.getElementById("nextBtn").addEventListener("click", function () { endCall(); setTimeout(startMatching, 500); });
@@ -3011,23 +3354,47 @@
       document.getElementById("reportBtn").addEventListener("click", openReportModal);
       document.getElementById("giftsBtn").addEventListener("click", openGiftsModal);
       document.getElementById("effectsBtn").addEventListener("click", toggleEffects);
+      
       document.getElementById("likeBtn").addEventListener("click", function () {
         state.stats.likes++;
         updateStats();
         if (state.user) renderProfile(state.user);
         showToast("Liked!", "success");
+        // Send like event to partner if socket connected
+        if(socket && currentRoom) {
+            socket.emit("reaction", { type: "like", room: currentRoom });
+        }
       });
+      
       document.getElementById("cameraBtn").addEventListener("click", switchCamera);
       document.getElementById("layoutBtn").addEventListener("click", toggleLayout);
-      
-      // Updated PiP Button Listener
+      document.getElementById("screenShareBtn").addEventListener("click", toggleScreenShare);
       document.getElementById("pipBtn").addEventListener("click", togglePiP);
-      
       document.getElementById("resetPositionBtn").addEventListener("click", resetVideoPosition);
-      document.querySelectorAll(".effect-btn").forEach(function (b) { b.addEventListener("click", function () { applyEffect(b.dataset.effect); }); });
-      document.querySelectorAll(".report-option").forEach(function (o) { o.addEventListener("click", function () { document.querySelectorAll(".report-option").forEach(function (x) { x.classList.remove("selected"); }); o.classList.add("selected"); }); });
+      
+      document.querySelectorAll(".effect-btn").forEach(function (b) { 
+          b.addEventListener("click", function () { applyEffect(b.dataset.effect); }); 
+      });
+      
+      document.querySelectorAll(".report-option").forEach(function (o) { 
+          o.addEventListener("click", function () { 
+              document.querySelectorAll(".report-option").forEach(function (x) { x.classList.remove("selected"); }); 
+              o.classList.add("selected"); 
+          }); 
+      });
 
-      /* ===================== GLOBALS ===================== */
+      // Keyboard shortcuts for accessibility
+      document.addEventListener("keydown", function(e) {
+          // Escape key closes modals
+          if (e.key === "Escape") {
+              if(document.getElementById("reportModal").classList.contains("active")) closeReportModal();
+              if(document.getElementById("giftsModal").classList.contains("active")) closeGiftsModal();
+              if(document.getElementById("editNameModal").classList.contains("active")) closeEditNameModal();
+              if(document.getElementById("ageVerifyModal").classList.contains("active")) closeAgeVerifyModal();
+          }
+      });
+
+      /* ===================== GLOBAL EXPORTS (for onclick) ===================== */
       window.requestPermissions = requestPermissions;
       window.denyPermissions = denyPermissions;
       window.toggleSettings = toggleSettings;
@@ -3060,7 +3427,9 @@
       window.openAgeVerifyModal = openAgeVerifyModal;
       window.closeAgeVerifyModal = closeAgeVerifyModal;
       window.verifyAge = verifyAge;
+      window.togglePiP = togglePiP;
 
+      // Initialize the application
       init();
     </script>
   </body>
