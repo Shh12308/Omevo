@@ -3,17 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="description" content="Omevo - Next Generation Video Chat Platform with AI Moderation and Real-time Translation" />
+    <meta name="description" content="Omevo - Next Generation Video Chat Platform" />
     <meta name="theme-color" content="#0f172a" />
     <title>Omevo - Next Generation Video Chat</title>
     
-    <!-- Preconnect to origins -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
     
-    <!-- External Scripts -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
     <script src="https://js.stripe.com/v3/"></script>
@@ -458,7 +456,8 @@
       'use strict';
 
       const CONFIG = {
-        BACKEND: "https://term-production-bf65.up.railway.app",
+        // IMPORTANT: Update this to your actual backend URL if different
+        BACKEND: "https://term-production-bf65.up.railway.app", 
         AGORA_APP_ID: "0f9094ed4a8e4dea934059b0ea8b5182",
         STRIPE_PUBLISHABLE_KEY: "pk_test_your_stripe_key_here",
         DEBUG_MODE: true,
@@ -963,11 +962,8 @@
           await localTracks.videoTrack.setDevice(dev.deviceId);
           showToast("Switched to " + (dev.label || "Camera"), "success");
           
-          // Handle mirroring for local video element
           var el = document.querySelector("#localVideo video");
           if (el) {
-             // Usually front cameras are mirrored, back cameras are not. 
-             // Agora handles this sometimes, but we force update the CSS.
              const isBackCamera = dev.label.toLowerCase().includes("back") || dev.label.toLowerCase().includes("rear");
              el.style.transform = isBackCamera ? "scaleX(1)" : "scaleX(-1)";
           }
@@ -1008,7 +1004,6 @@
             
             localTracks.screenTrack = screenTrack;
             
-            // Add event listener for when user stops sharing via browser UI
             screenTrack.on("track-ended", () => {
                 stopScreenShare();
             });
@@ -1102,7 +1097,6 @@
         socket.on("report_submitted", function (d) { showToast(d.message || "Report submitted", "success"); });
         
         socket.on("typing", function(d) {
-             // Show typing indicator if the sender is not the current user
              if(d.uid && state.user && String(d.uid) !== String(state.user.id)) {
                  showTypingIndicator();
              }
@@ -1194,7 +1188,6 @@
           
           client.on("user-unpublished", function (u, m) { if (m === "video") document.getElementById("remoteVideo").srcObject = null; });
           
-          // Network Quality
           client.on("network-quality", function(stats) {
              updateNetworkUI(stats.downlinkNetworkQuality);
           });
@@ -1208,15 +1201,13 @@
       }
 
       function updateNetworkUI(quality) {
-          // Agora Quality: 0(Unknown), 1(Excellent), 2(Good), 3(Poor), 4(Bad), 5(VBad), 6(Down)
           const el = document.getElementById('networkQuality');
           el.className = 'network-quality';
-          
           if(quality <= 1) el.classList.add('excellent');
           else if(quality === 2) el.classList.add('good');
           else if(quality === 3) el.classList.add('poor');
           else if(quality >= 4) el.classList.add('bad');
-          else el.classList.add('poor'); // Unknown fallback
+          else el.classList.add('poor');
       }
 
       function updatePartnerInfo(d) {
@@ -1248,7 +1239,6 @@
         document.getElementById("chatMessages").innerHTML = "";
         document.getElementById("remoteVideo").srcObject = null;
         
-        // Reset Screen Share State
         if(localTracks.screenTrack) {
             localTracks.screenTrack.close();
             localTracks.screenTrack = null;
@@ -1273,7 +1263,7 @@
           if (!isInCall || !socket || !socket.connected) return;
           try {
             var v = document.querySelector("#localVideo video");
-            if (!v || v.readyState < 2) return; // Check if video is ready
+            if (!v || v.readyState < 2) return;
             mc.width = 320;
             mc.height = 240;
             mx.drawImage(v, 0, 0, 320, 240);
@@ -1306,13 +1296,11 @@
       function showTypingIndicator() {
           const el = document.getElementById("typingIndicator");
           el.style.display = "block";
-          // Hide after 3 seconds
           setTimeout(() => { el.style.display = "none"; }, 3000);
       }
 
       document.getElementById("messageInput").addEventListener("keydown", function (e) { 
           if (e.key === "Enter") sendMessage();
-          // Emit typing event
           if(socket && socket.connected && currentRoom) {
               socket.emit("typing", { room: currentRoom });
           }
@@ -1385,7 +1373,6 @@
           });
           var d = await r.json();
           if (d.sessionId) {
-            // Stripe is already initialized globally
             var err = await stripe.redirectToCheckout({ sessionId: d.sessionId });
             if (err.error) showToast(err.error.message, "error");
           } else showToast("Failed", "error");
@@ -1453,9 +1440,11 @@
       function initDraggableVideo() {
         var w = document.getElementById("localVideoWrapper");
         var drag = false, ix, iy; 
-        var start = function (cx, cy) { if (currentLayout === "split") return; drag = true; ix =         cx - (w.offsetLeft || 0); 
-          iy = cy - (w.offsetTop || 0); 
-          w.style.transition = 'none'; // Disable transition during drag for 1:1 feel
+        var start = function (cx, cy) { 
+            if (currentLayout === "split") return; 
+            drag = true; ix = cx - (w.offsetLeft || 0); 
+            iy = cy - (w.offsetTop || 0); 
+            w.style.transition = 'none'; 
         };
         
         var move = function (cx, cy) {
@@ -1463,14 +1452,10 @@
           if (currentLayout === "float") {
             var newX = cx - ix;
             var newY = cy - iy;
-            
-            // Boundary checks to keep video on screen
             var maxX = window.innerWidth - w.offsetWidth;
             var maxY = window.innerHeight - w.offsetHeight;
-            
             newX = Math.max(0, Math.min(newX, maxX));
             newY = Math.max(0, Math.min(newY, maxY));
-            
             w.style.right = "auto";
             w.style.bottom = "auto";
             w.style.left = newX + "px";
@@ -1481,12 +1466,11 @@
         var end = function () {
           if(drag) {
               drag = false;
-              w.style.transition = ''; // Re-enable transition
+              w.style.transition = ''; 
           }
         };
 
         w.addEventListener("mousedown", function (e) { 
-            // Prevent drag if clicking a button inside the wrapper
             if(e.target.closest('button')) return;
             start(e.clientX, e.clientY); 
         });
@@ -1499,7 +1483,7 @@
         document.addEventListener("mousemove", function (e) { move(e.clientX, e.clientY); });
         document.addEventListener("touchmove", function (e) { 
             if (drag) {
-                e.preventDefault(); // Prevent scrolling while dragging
+                e.preventDefault(); 
                 move(e.touches[0].clientX, e.touches[0].clientY); 
             }
         }, { passive: false });
@@ -1531,7 +1515,6 @@
             await document.exitPictureInPicture();
             showToast("Exited Picture-in-Picture", "info");
           } else if (document.pictureInPictureEnabled) {
-            // Ensure metadata is loaded before requesting PiP
             if (videoElement.readyState >= 1) {
                 await videoElement.requestPictureInPicture();
                 showToast("Picture-in-Picture mode", "success");
@@ -1559,7 +1542,6 @@
         await loadProfile();
         updateStats();
 
-        // Payment success check via URL params
         if (urlParams.get("payment") === "success") {
           var sid = urlParams.get("session_id");
           if (sid && token) {
@@ -1593,7 +1575,6 @@
           window.history.replaceState({}, document.title, window.location.pathname);
         }
 
-        // Coin package selection logic
         document.querySelectorAll(".coin-package").forEach(function (p) {
           p.addEventListener("click", function () {
             document.querySelectorAll(".coin-package").forEach(function (x) { x.classList.remove("selected"); });
@@ -1604,7 +1585,6 @@
       }
 
       async function init() {
-        // Check for unban redirect first
         if (urlParams.get("unban") === "success" && token) {
           var banned = await checkBanStatus();
           if (!banned) {
@@ -1615,17 +1595,15 @@
           }
         }
         
-        // No token flow
         if (!token) {
           document.getElementById("loadingScreen").classList.add("hidden");
           document.getElementById("permissionOverlay").classList.remove("hidden");
           return;
         }
         
-        // Standard auth flow
         document.getElementById("loadingScreen").classList.remove("hidden");
         var banned = await checkBanStatus();
-        if (banned) return; // Ban screen handles UI
+        if (banned) return; 
         
         document.getElementById("loadingScreen").classList.add("hidden");
         document.getElementById("permissionOverlay").classList.remove("hidden");
@@ -1645,7 +1623,6 @@
         updateStats();
         if (state.user) renderProfile(state.user);
         showToast("Liked!", "success");
-        // Send like event to partner if socket connected
         if(socket && currentRoom) {
             socket.emit("reaction", { type: "like", room: currentRoom });
         }
@@ -1668,9 +1645,7 @@
           }); 
       });
 
-      // Keyboard shortcuts for accessibility
       document.addEventListener("keydown", function(e) {
-          // Escape key closes modals
           if (e.key === "Escape") {
               if(document.getElementById("reportModal").classList.contains("active")) closeReportModal();
               if(document.getElementById("giftsModal").classList.contains("active")) closeGiftsModal();
@@ -1679,7 +1654,7 @@
           }
       });
 
-      /* ===================== GLOBAL EXPORTS (for onclick) ===================== */
+      /* ===================== GLOBAL EXPORTS ===================== */
       window.requestPermissions = requestPermissions;
       window.denyPermissions = denyPermissions;
       window.toggleSettings = toggleSettings;
@@ -1714,7 +1689,6 @@
       window.verifyAge = verifyAge;
       window.togglePiP = togglePiP;
 
-      // Initialize the application
       init();
     </script>
   </body>
