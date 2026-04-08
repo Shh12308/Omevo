@@ -1,9 +1,11 @@
 import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
 
 export default defineConfig({
-  root: '.',          // project root
+  plugins: [react()],
+  base: './',      // makes paths relative for Vercel
   build: {
-    outDir: 'dist',   // inside project root
-    emptyOutDir: true // cleans dist before build
+    outDir: 'dist',
+    emptyOutDir: true
   }
 })
