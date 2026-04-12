@@ -378,6 +378,7 @@ const OmevoChat = () => {
   const [isConnected, setIsConnected] = useState(false);
   
   const socketRef = useRef(null);
+  const inputRef = useRef(null);
   const chatEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
 
