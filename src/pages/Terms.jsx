@@ -1,6 +1,6 @@
 import React from 'react';
 
-const TermsOfService = () => {
+const Terms = () => {
   // Styles converted to a React style object
   const styles = {
     wrapper: {
@@ -113,4 +113,4 @@ const TermsOfService = () => {
   );
 };
 
-export default TermsOfService;
+export default Terms;
