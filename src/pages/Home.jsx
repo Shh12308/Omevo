@@ -2,7 +2,7 @@ import React from 'react';
 
 const Home = () => {
   const backendURL = "https://term-production-bf65.up.railway.app";
-  const redirectURL = encodeURIComponent("https://omevo.vercel.app/achat.html");
+  const redirectURL = encodeURIComponent("https://omevo.vercel.app/video");
 
   const handleLogin = (provider) => {
     window.location.href = `${backendURL}/auth/${provider}?redirect=${redirectURL}`;
