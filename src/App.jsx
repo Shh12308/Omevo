@@ -1,9 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Home from './pages/Home';
-import TermsOfService from './pages/Terms';
-import OmevoChat from './pages/Chat';
-import OmevoVideoApp from './pages/OmevoVideoApp';
+
 
 function App() {
   return (
@@ -11,11 +9,6 @@ function App() {
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={<Home />} />
-        <Route path="/terms" element={<Terms />} />
-        
-        {/* App Routes */}
-        <Route path="/chat" element={<Chat />} />
-        <Route path="/video" element={<OmevoVideoApp />} />
         
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
