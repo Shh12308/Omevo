@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 // Note: AgoraRTC is assumed to be on window from the CDN script in index.html
 
-const OmevoVideoApp = () => {
+const Video = () => {
   // --- CONFIGURATION ---
   const CONFIG = {
     BACKEND: "https://term-production-bf65.up.railway.app",
@@ -586,4 +586,4 @@ const OmevoVideoApp = () => {
   );
 };
 
-export default OmevoVideoApp;
+export default Video;
