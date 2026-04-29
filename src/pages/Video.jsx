@@ -75,7 +75,7 @@ export default function Video() {
   /* ---------- data state ---------- */
   const [user, setUser] = useState(null);
   const [userCoins, setUserCoins] = useState(0);
-  const [isInCall, setIsInCall] = useState(false); // Fix: state for rendering
+  const [isInCall, setIsInCall] = useState(false);
   const [stats, setStats] = useState({ matches: 0, likes: 0, level: 1 });
   const [matchTime, setMatchTime] = useState('0:00');
   const [partnerInfo, setPartnerInfoState] = useState(null);
@@ -89,7 +89,7 @@ export default function Video() {
 
   /* ---------- form state ---------- */
   const [genderSelect, setGenderSelect] = useState('male');
-  const [lookingFor, setLookingFor] = useState('any'); // Fix: lookingFor state
+  const [lookingFor, setLookingFor] = useState('any');
   const [locationSelect, setLocationSelect] = useState('any');
   const [interestsInput, setInterestsInput] = useState('');
   const [editName, setEditName] = useState('');
@@ -122,10 +122,10 @@ export default function Video() {
   const isMatchingRef = useRef(false);
   const isScreenSharingRef = useRef(false);
   const preferencesRef = useRef({
-    gender: 'male', looking_for: 'any', location: 'any', interests: [], // Fix: looking_for
+    gender: 'male', looking_for: 'any', location: 'any', interests: [],
   });
   const stripeRef = useRef(null);
-  const userIdRef = useRef(null); // Fix: stale user state in sockets
+  const userIdRef = useRef(null);
 
   /* ===================== TOAST ===================== */
   const addToast = useCallback((msg, type = 'info', title = '') => {
@@ -187,7 +187,11 @@ export default function Video() {
     setShowBlurOverlay(false);
     setShowChat(false);
 
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    // FIX: Pause before clearing to prevent "Load failed" console error
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.pause();
+      remoteVideoRef.current.srcObject = null;
+    }
 
     if (localTracksRef.current.screenTrack) {
       try { localTracksRef.current.screenTrack.close(); } catch {}
@@ -203,7 +207,7 @@ export default function Video() {
   useEffect(() => { doEndCallRef.current = doEndCall; }, [doEndCall]);
 
   /* -- start call -- */
-  const doStartCall = async (channelName, peerId) => { // Fix: added peerId param
+  const doStartCall = async (channelName, peerId) => {
     const AgoraRTC = window.AgoraRTC;
     if (!AgoraRTC) { addToast('AgoraRTC not loaded', 'error'); doEndCallRef.current(); return; }
 
@@ -231,7 +235,7 @@ export default function Video() {
       if (!localTracksRef.current.audioTrack) localTracksRef.current.audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
       if (!localTracksRef.current.videoTrack) {
         localTracksRef.current.videoTrack = await AgoraRTC.createCameraVideoTrack();
-        localTracksRef.current.videoTrack.play(localVideoDivRef.current); // Fix: play if created here
+        localTracksRef.current.videoTrack.play(localVideoDivRef.current);
       }
       
       await client.publish([localTracksRef.current.audioTrack, localTracksRef.current.videoTrack]);
@@ -249,10 +253,13 @@ export default function Video() {
       });
       
       client.on('user-unpublished', (u, m) => {
-        if (m === 'video' && remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+        if (m === 'video' && remoteVideoRef.current) {
+          remoteVideoRef.current.pause(); // FIX: Pause before clearing
+          remoteVideoRef.current.srcObject = null;
+        }
       });
 
-      client.on('user-left', () => { // Fix: handle partner leaving via Agora
+      client.on('user-left', () => {
         addToast('Partner left the call', 'info');
         doEndCallRef.current();
       });
@@ -329,7 +336,7 @@ export default function Video() {
       if (r.ok) {
         const p = await r.json();
         setGenderSelect(p.gender || 'male');
-        setLookingFor(p.looking_for || 'any'); // Fix: lookingFor
+        setLookingFor(p.looking_for || 'any');
         setLocationSelect(p.location || 'any');
         setInterestsInput((p.interests || []).join(', '));
         preferencesRef.current = { ...preferencesRef.current, ...p };
@@ -347,8 +354,12 @@ export default function Video() {
         const u = await r.json();
         setUser(u);
         setUserCoins(u.coins || 0);
+      } else {
+        console.warn('Load profile failed:', r.status);
       }
-    } catch (e) { console.error('Load profile error:', e); }
+    } catch (e) { 
+      console.warn('Load profile error:', e.message); 
+    }
   };
 
   /* -- save settings -- */
@@ -356,7 +367,7 @@ export default function Video() {
     const interests = interestsInput.split(',').map(i => i.trim()).filter(i => i.length > 0).slice(0, 5);
     const payload = {
       gender: genderSelect,
-      looking_for: lookingFor, // Fix: lookingFor
+      looking_for: lookingFor,
       location: locationSelect,
       interests,
       nickname: (user && (user.username || user.nickname)) || 'User',
@@ -423,7 +434,6 @@ export default function Video() {
         setShowPermission(true);
         return;
       }
-      // Fix: check ban status before allowing access
       const isBanned = await checkBanStatus();
       if (isBanned) {
         setLoading(false);
@@ -450,7 +460,7 @@ export default function Video() {
     try {
       const payload = {
         gender: preferencesRef.current.gender,
-        looking_for: preferencesRef.current.looking_for, // Fix: lookingFor
+        looking_for: preferencesRef.current.looking_for,
         location: preferencesRef.current.location,
         interests: preferencesRef.current.interests,
         nickname: (user && (user.username || user.nickname)) || 'User',
@@ -619,7 +629,6 @@ export default function Video() {
     if (!text || !socketRef.current?.connected || !currentRoomRef.current) return;
     if (text.length > 500) { addToast('Too long (max 500)', 'error'); return; }
     socketRef.current.emit('message', { room: currentRoomRef.current, text });
-    // Fix: Removed optimistic addMsgToChat to prevent duplicates with backend echo
     setMessageInput('');
   };
 
@@ -910,7 +919,7 @@ export default function Video() {
 
     socket.on('match_found', (d) => {
       if (isMatchingRef.current && !isInCallRef.current) {
-        isMatchingRef.current = false; // Fix: prevent race condition with polling
+        isMatchingRef.current = false;
         partnerIdRef.current = d.peerId;
         currentRoomRef.current = d.channel;
         setPartnerInfoState(d.peerInfo || null);
@@ -920,7 +929,7 @@ export default function Video() {
 
     socket.on('peer_left', () => {
       addToastRef.current('Partner disconnected', 'info');
-      doEndCallRef.current(); // Fix: end call on peer left
+      doEndCallRef.current();
     });
 
     socket.on('banned', (d) => { doEndCallRef.current(); setBanData({ reason: d.reason, until: d.until }); });
@@ -929,13 +938,13 @@ export default function Video() {
 
     socket.on('message', (d) => {
       const txt = d.text || d.message || '';
-      const own = d.uid && userIdRef.current && String(d.uid) === String(userIdRef.current); // Fix: use userIdRef
+      const own = d.uid && userIdRef.current && String(d.uid) === String(userIdRef.current);
       addMsgToChat(txt, own, own ? 'You' : (d.username || 'Stranger'));
     });
 
     socket.on('room_history', (d) => {
       if (d.messages) d.messages.forEach(m => {
-        const own = m.uid && userIdRef.current && String(m.uid) === String(userIdRef.current); // Fix: use userIdRef
+        const own = m.uid && userIdRef.current && String(m.uid) === String(userIdRef.current);
         addMsgToChat(m.message || m.text, own, own ? 'You' : 'Stranger');
       });
     });
@@ -943,7 +952,7 @@ export default function Video() {
     socket.on('report_submitted', (d) => addToastRef.current(d.message || 'Report submitted', 'success'));
 
     socket.on('typing', (d) => {
-      if (d.uid && userIdRef.current && String(d.uid) !== String(userIdRef.current)) { // Fix: use userIdRef
+      if (d.uid && userIdRef.current && String(d.uid) !== String(userIdRef.current)) {
         setShowTyping(true);
         setTimeout(() => setShowTyping(false), 3000);
       }
@@ -1168,14 +1177,13 @@ export default function Video() {
 
           {/* Controls */}
           <div className="controls" role="toolbar" aria-label="Video Call Controls">
-            {!isInCall && !partnerInfo && ( // Fix: using isInCall state instead of isInCallRef.current
+            {!isInCall && !partnerInfo ? (
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="control-btn primary" title="Start Chatting" aria-label="Start Chatting" onClick={startMatching}><i className="fas fa-play" /></button>
                 <button className="control-btn" title="Send Gift" aria-label="Send Gift" onClick={() => setShowGifts(true)}><i className="fas fa-gift" /></button>
                 <button className="control-btn" title="Video Effects" aria-label="Video Effects" onClick={() => setShowEffects(v => !v)}><i className="fas fa-magic" /></button>
               </div>
-            )}
-            {partnerInfo && (
+            ) : (
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="control-btn" title="Next (Skip)" aria-label="Next Partner" onClick={handleNext}><i className="fas fa-forward" /></button>
                 <button className="control-btn" title="Chat" aria-label="Open Chat" onClick={() => setShowChat(v => !v)}><i className="fas fa-comment" /></button>
@@ -1424,6 +1432,11 @@ export default function Video() {
       {/* FABs */}
       <button className="fab" onClick={() => setShowSettings(v => !v)} title="Settings" aria-label="Open Settings"><i className="fas fa-cog" /></button>
       <button className="fab" style={{ bottom: 90 }} onClick={() => { setShowProfile(v => !v); if (!showProfile) loadProfile(); }} title="Profile" aria-label="Open Profile"><i className="fas fa-user" /></button>
+      
+      {/* LINK TO TEXT CHAT */}
+      <a href="/chat" className="fab" style={{ bottom: 150, textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Text Chat" aria-label="Switch to Text Chat">
+        <i className="fas fa-comment-dots" />
+      </a>
     </>
   );
 }
