@@ -75,6 +75,7 @@ export default function Video() {
   /* ---------- data state ---------- */
   const [user, setUser] = useState(null);
   const [userCoins, setUserCoins] = useState(0);
+  const [isInCall, setIsInCall] = useState(false); // Fix: state for rendering
   const [stats, setStats] = useState({ matches: 0, likes: 0, level: 1 });
   const [matchTime, setMatchTime] = useState('0:00');
   const [partnerInfo, setPartnerInfoState] = useState(null);
@@ -88,7 +89,7 @@ export default function Video() {
 
   /* ---------- form state ---------- */
   const [genderSelect, setGenderSelect] = useState('male');
-  const [lookingFor, setLookingFor] = useState('any');
+  const [lookingFor, setLookingFor] = useState('any'); // Fix: lookingFor state
   const [locationSelect, setLocationSelect] = useState('any');
   const [interestsInput, setInterestsInput] = useState('');
   const [editName, setEditName] = useState('');
@@ -121,9 +122,10 @@ export default function Video() {
   const isMatchingRef = useRef(false);
   const isScreenSharingRef = useRef(false);
   const preferencesRef = useRef({
-    gender: 'male', lookingFor: 'any', location: 'any', interests: [],
+    gender: 'male', looking_for: 'any', location: 'any', interests: [], // Fix: looking_for
   });
   const stripeRef = useRef(null);
+  const userIdRef = useRef(null); // Fix: stale user state in sockets
 
   /* ===================== TOAST ===================== */
   const addToast = useCallback((msg, type = 'info', title = '') => {
@@ -140,169 +142,136 @@ export default function Video() {
   const addToastRef = useRef(addToast);
   useEffect(() => { addToastRef.current = addToast; }, [addToast]);
 
-  /* ===================== CANVAS PARTICLES ===================== */
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
-    resize();
-    window.addEventListener('resize', resize);
-
-    class P {
-      constructor() {
-        this.x = Math.random() * canvas.width;
-        this.y = Math.random() * canvas.height;
-        this.s = Math.random() * 2 + 0.5;
-        this.dx = Math.random() * 0.5 - 0.25;
-        this.dy = Math.random() * 0.5 - 0.25;
-        this.o = Math.random() * 0.5 + 0.2;
-      }
-      update() {
-        this.x += this.dx; this.y += this.dy;
-        if (this.x > canvas.width) this.x = 0;
-        if (this.x < 0) this.x = canvas.width;
-        if (this.y > canvas.height) this.y = 0;
-        if (this.y < 0) this.y = canvas.height;
-      }
-      draw() {
-        ctx.fillStyle = `rgba(99,102,241,${this.o})`;
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.s, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-    const particles = Array.from({ length: 50 }, () => new P());
-    let animId;
-    const animate = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      particles.forEach(p => { p.update(); p.draw(); });
-      animId = requestAnimationFrame(animate);
-    };
-    animate();
-    return () => { cancelAnimationFrame(animId); window.removeEventListener('resize', resize); };
-  }, []);
-
-  /* ===================== ESCAPE KEY ===================== */
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === 'Escape') {
-        setShowReport(false); setShowGifts(false); setShowEditName(false);
-        setShowAgeVerify(false); setShowAppeal(false); setShowPayment(false);
-        setShowEffects(false);
-      }
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, []);
-
-  /* ===================== MATCH TIMER ===================== */
-  useEffect(() => {
-    if (isInCallRef.current) {
-      matchTimerRef.current = setInterval(() => {
-        matchSecondsRef.current++;
-        const m = Math.floor(matchSecondsRef.current / 60);
-        const s = matchSecondsRef.current % 60;
-        setMatchTime(`${m}:${s < 10 ? '0' : ''}${s}`);
-      }, 1000);
-    } else {
-      if (matchTimerRef.current) { clearInterval(matchTimerRef.current); matchTimerRef.current = null; }
-    }
-    return () => { if (matchTimerRef.current) clearInterval(matchTimerRef.current); };
-  }, [partnerInfo]); // re-run when partner connects (partnerInfo changes from null to object)
-
-  /* ===================== DRAGGABLE LOCAL VIDEO ===================== */
-  useEffect(() => {
-    const wrapper = localVideoWrapperRef.current;
-    if (!wrapper) return;
-    let dragging = false, sx, sy;
-    const start = (cx, cy) => {
-      if (currentLayout === 'split') return;
-      dragging = true;
-      sx = cx - wrapper.offsetLeft;
-      sy = cy - wrapper.offsetTop;
-      wrapper.style.transition = 'none';
-    };
-    const move = (cx, cy) => {
-      if (!dragging || currentLayout !== 'float') return;
-      const x = Math.max(0, Math.min(cx - sx, window.innerWidth - wrapper.offsetWidth));
-      const y = Math.max(0, Math.min(cy - sy, window.innerHeight - wrapper.offsetHeight));
-      wrapper.style.right = 'auto'; wrapper.style.bottom = 'auto';
-      wrapper.style.left = x + 'px'; wrapper.style.top = y + 'px';
-    };
-    const end = () => { if (dragging) { dragging = false; wrapper.style.transition = ''; } };
-    const md = (e) => { if (e.target.closest('button')) return; start(e.clientX, e.clientY); };
-    const ts = (e) => { if (e.target.closest('button')) return; start(e.touches[0].clientX, e.touches[0].clientY); };
-    const mm = (e) => move(e.clientX, e.clientY);
-    const tm = (e) => { if (dragging) { e.preventDefault(); move(e.touches[0].clientX, e.touches[0].clientY); } };
-    wrapper.addEventListener('mousedown', md);
-    wrapper.addEventListener('touchstart', ts, { passive: true });
-    document.addEventListener('mousemove', mm);
-    document.addEventListener('touchmove', tm, { passive: false });
-    document.addEventListener('mouseup', end);
-    document.addEventListener('touchend', end);
-    return () => {
-      wrapper.removeEventListener('mousedown', md);
-      wrapper.removeEventListener('touchstart', ts);
-      document.removeEventListener('mousemove', mm);
-      document.removeEventListener('touchmove', tm);
-      document.removeEventListener('mouseup', end);
-      document.removeEventListener('touchend', end);
-    };
-  }, [currentLayout]);
-
-  /* ===================== SOCKET ===================== */
-  useEffect(() => {
-    if (!tokenRef.current) return;
-    const socket = io(CONFIG.BACKEND);
-    socketRef.current = socket;
-
-    socket.on('connect', () => {
-      if (tokenRef.current) socket.emit('auth', { token: tokenRef.current });
-    });
-    socket.on('authenticated', (d) => {
-      if (CONFIG.DEBUG_MODE) console.log('[Omevo] Socket Authenticated:', d.userId);
-    });
-    socket.on('match_found', (d) => {
-      if (isMatchingRef.current && !isInCallRef.current) {
-        partnerIdRef.current = d.peerId;
-        currentRoomRef.current = d.channel;
-        setPartnerInfoState(d.peerInfo || null);
-        doStartCall(d.channel, d.peerId);
-      }
-    });
-    socket.on('peer_left', () => addToastRef.current('Partner disconnected', 'info'));
-    socket.on('banned', (d) => { doEndCall(); setBanData({ reason: d.reason, until: d.until }); });
-    socket.on('moderation_action', (d) => { if (d.banned) { doEndCall(); setBanData({ reason: d.reason, until: null }); } });
-    socket.on('message', (d) => {
-      const txt = d.text || d.message || '';
-      const own = d.uid && user && String(d.uid) === String(user.id);
-      addMsgToChat(txt, own, own ? 'You' : (d.username || 'Stranger'));
-    });
-    socket.on('room_history', (d) => {
-      if (d.messages) d.messages.forEach(m => {
-        const own = m.uid && user && String(m.uid) === String(user.id);
-        addMsgToChat(m.message || m.text, own, 'Stranger');
-      });
-    });
-    socket.on('report_submitted', (d) => addToastRef.current(d.message || 'Report submitted', 'success'));
-    socket.on('typing', (d) => {
-      if (d.uid && user && String(d.uid) !== String(user.id)) {
-        setShowTyping(true);
-        setTimeout(() => setShowTyping(false), 3000);
-      }
-    });
-    socket.on('error', (d) => { if (d.message) addToastRef.current(d.message, 'error'); });
-
-    return () => { socket.disconnect(); socketRef.current = null; };
-  }, []); // only once — all inner handlers use refs
+  /* ===================== SYNC REFS ===================== */
+  useEffect(() => { userIdRef.current = user?.id ?? null; }, [user]);
 
   /* ===================== CHAT HELPER ===================== */
   const addMsgToChat = useCallback((msg, isOwn, name) => {
     setChatMessages(prev => [...prev, { msg, isOwn, name, id: Date.now() + Math.random() }]);
   }, []);
 
+  /* ===================== MATCH TIMER (Imperative) ===================== */
+  const startMatchTimer = useCallback(() => {
+    if (matchTimerRef.current) clearInterval(matchTimerRef.current);
+    matchSecondsRef.current = 0;
+    setMatchTime('0:00');
+    matchTimerRef.current = setInterval(() => {
+      matchSecondsRef.current++;
+      const m = Math.floor(matchSecondsRef.current / 60);
+      const s = matchSecondsRef.current % 60;
+      setMatchTime(`${m}:${s < 10 ? '0' : ''}${s}`);
+    }, 1000);
+  }, []);
+
+  const stopMatchTimer = useCallback(() => {
+    if (matchTimerRef.current) {
+      clearInterval(matchTimerRef.current);
+      matchTimerRef.current = null;
+    }
+    matchSecondsRef.current = 0;
+    setMatchTime('0:00');
+  }, []);
+
   /* ===================== CORE FUNCTIONS ===================== */
+
+  /* -- end call -- */
+  const doEndCall = useCallback(() => {
+    isInCallRef.current = false;
+    isMatchingRef.current = false;
+    isScreenSharingRef.current = false;
+    setIsInCall(false);
+    stopMatchTimer();
+    setCurrentLayout('float');
+    setPartnerInfoState(null);
+    setChatMessages([]);
+    setShowBlurOverlay(false);
+    setShowChat(false);
+
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+
+    if (localTracksRef.current.screenTrack) {
+      try { localTracksRef.current.screenTrack.close(); } catch {}
+      localTracksRef.current.screenTrack = null;
+    }
+    if (clientRef.current) { try { clientRef.current.leave(); } catch {} clientRef.current = null; }
+    if (socketRef.current && currentRoomRef.current) socketRef.current.emit('leave_room', { room: currentRoomRef.current });
+    currentRoomRef.current = null;
+    partnerIdRef.current = null;
+  }, [stopMatchTimer]);
+
+  const doEndCallRef = useRef(doEndCall);
+  useEffect(() => { doEndCallRef.current = doEndCall; }, [doEndCall]);
+
+  /* -- start call -- */
+  const doStartCall = async (channelName, peerId) => { // Fix: added peerId param
+    const AgoraRTC = window.AgoraRTC;
+    if (!AgoraRTC) { addToast('AgoraRTC not loaded', 'error'); doEndCallRef.current(); return; }
+
+    isMatchingRef.current = false;
+    isInCallRef.current = true;
+    setIsInCall(true);
+    startMatchTimer();
+    setShowBlurOverlay(false);
+    setChatMessages([]);
+
+    try {
+      const uid = Math.floor(Math.random() * 100000);
+      const tr = await fetch(CONFIG.BACKEND + '/generateToken', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current },
+        body: JSON.stringify({ channelName, uid, role: 'publisher', expirySeconds: 3600 }),
+      });
+      if (!tr.ok) { const e = await tr.json(); throw new Error(e.error || 'Token failed'); }
+      const td = await tr.json();
+
+      const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+      clientRef.current = client;
+      await client.join(td.appID || CONFIG.AGORA_APP_ID, channelName, td.rtcToken, uid);
+
+      if (!localTracksRef.current.audioTrack) localTracksRef.current.audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+      if (!localTracksRef.current.videoTrack) {
+        localTracksRef.current.videoTrack = await AgoraRTC.createCameraVideoTrack();
+        localTracksRef.current.videoTrack.play(localVideoDivRef.current); // Fix: play if created here
+      }
+      
+      await client.publish([localTracksRef.current.audioTrack, localTracksRef.current.videoTrack]);
+
+      client.on('user-published', async (u, mediaType) => {
+        await client.subscribe(u, mediaType);
+        if (mediaType === 'video') {
+          const el = remoteVideoRef.current;
+          if (el) {
+            el.srcObject = new MediaStream([u.videoTrack.getMediaStreamTrack()]);
+            el.play().catch(() => {});
+          }
+        }
+        if (mediaType === 'audio') u.audioTrack.play();
+      });
+      
+      client.on('user-unpublished', (u, m) => {
+        if (m === 'video' && remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+      });
+
+      client.on('user-left', () => { // Fix: handle partner leaving via Agora
+        addToast('Partner left the call', 'info');
+        doEndCallRef.current();
+      });
+
+      client.on('network-quality', (s) => {
+        const q = s.downlinkNetworkQuality;
+        setNetworkQuality(q <= 1 ? 'excellent' : q === 2 ? 'good' : q === 3 ? 'poor' : 'bad');
+      });
+
+      socketRef.current?.emit('join_room', { room: channelName });
+      startModerationLoop(channelName);
+      setStats(prev => ({ ...prev, matches: prev.matches + 1 }));
+      addToast('Connected!', 'success');
+    } catch (e) {
+      console.error('Call error:', e);
+      addToast('Failed: ' + e.message, 'error');
+      doEndCallRef.current();
+    }
+  };
 
   /* -- check ban -- */
   const checkBanStatus = useCallback(async () => {
@@ -360,6 +329,7 @@ export default function Video() {
       if (r.ok) {
         const p = await r.json();
         setGenderSelect(p.gender || 'male');
+        setLookingFor(p.looking_for || 'any'); // Fix: lookingFor
         setLocationSelect(p.location || 'any');
         setInterestsInput((p.interests || []).join(', '));
         preferencesRef.current = { ...preferencesRef.current, ...p };
@@ -386,6 +356,7 @@ export default function Video() {
     const interests = interestsInput.split(',').map(i => i.trim()).filter(i => i.length > 0).slice(0, 5);
     const payload = {
       gender: genderSelect,
+      looking_for: lookingFor, // Fix: lookingFor
       location: locationSelect,
       interests,
       nickname: (user && (user.username || user.nickname)) || 'User',
@@ -452,11 +423,16 @@ export default function Video() {
         setShowPermission(true);
         return;
       }
+      // Fix: check ban status before allowing access
+      const isBanned = await checkBanStatus();
+      if (isBanned) {
+        setLoading(false);
+        return; 
+      }
       setLoading(false);
-      // We show permission screen first; after permissions, initializeAfterAuth runs
       setShowPermission(true);
     })();
-  }, []);
+  }, [checkBanStatus]);
 
   /* -- matching -- */
   const startMatching = async () => {
@@ -474,6 +450,7 @@ export default function Video() {
     try {
       const payload = {
         gender: preferencesRef.current.gender,
+        looking_for: preferencesRef.current.looking_for, // Fix: lookingFor
         location: preferencesRef.current.location,
         interests: preferencesRef.current.interests,
         nickname: (user && (user.username || user.nickname)) || 'User',
@@ -526,91 +503,6 @@ export default function Video() {
       headers: { Authorization: 'Bearer ' + tokenRef.current },
     }).catch(() => {});
   };
-
-  /* -- call -- */
-  const doStartCall = async (channelName) => {
-    const AgoraRTC = window.AgoraRTC;
-    if (!AgoraRTC) { addToast('AgoraRTC not loaded', 'error'); doEndCall(); return; }
-
-    isMatchingRef.current = false;
-    isInCallRef.current = true;
-    matchSecondsRef.current = 0;
-    setMatchTime('0:00');
-    setShowBlurOverlay(false);
-    setChatMessages([]);
-
-    try {
-      const uid = Math.floor(Math.random() * 100000);
-      const tr = await fetch(CONFIG.BACKEND + '/generateToken', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current },
-        body: JSON.stringify({ channelName, uid, role: 'publisher', expirySeconds: 3600 }),
-      });
-      if (!tr.ok) { const e = await tr.json(); throw new Error(e.error || 'Token failed'); }
-      const td = await tr.json();
-
-      const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
-      clientRef.current = client;
-      await client.join(td.appID || CONFIG.AGORA_APP_ID, channelName, td.rtcToken, uid);
-
-      if (!localTracksRef.current.audioTrack) localTracksRef.current.audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
-      if (!localTracksRef.current.videoTrack) localTracksRef.current.videoTrack = await AgoraRTC.createCameraVideoTrack();
-      await client.publish([localTracksRef.current.audioTrack, localTracksRef.current.videoTrack]);
-
-      client.on('user-published', async (u, mediaType) => {
-        await client.subscribe(u, mediaType);
-        if (mediaType === 'video') {
-          const el = remoteVideoRef.current;
-          if (el) {
-            el.srcObject = new MediaStream([u.videoTrack.getMediaStreamTrack()]);
-            el.play().catch(() => {});
-          }
-        }
-        if (mediaType === 'audio') u.audioTrack.play();
-      });
-      client.on('user-unpublished', (u, m) => {
-        if (m === 'video' && remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-      });
-      client.on('network-quality', (s) => {
-        const q = s.downlinkNetworkQuality;
-        setNetworkQuality(q <= 1 ? 'excellent' : q === 2 ? 'good' : q === 3 ? 'poor' : 'bad');
-      });
-
-      socketRef.current?.emit('join_room', { room: channelName });
-      startModerationLoop(channelName);
-      setStats(prev => ({ ...prev, matches: prev.matches + 1 }));
-      addToast('Connected!', 'success');
-    } catch (e) {
-      console.error('Call error:', e);
-      addToast('Failed: ' + e.message, 'error');
-      doEndCall();
-    }
-  };
-
-  /* -- end call -- */
-  const doEndCall = useCallback(() => {
-    isInCallRef.current = false;
-    isMatchingRef.current = false;
-    isScreenSharingRef.current = false;
-    if (matchTimerRef.current) { clearInterval(matchTimerRef.current); matchTimerRef.current = null; }
-    if (moderationRef.current) { clearInterval(moderationRef.current); moderationRef.current = null; }
-    setCurrentLayout('float');
-    setPartnerInfoState(null);
-    setChatMessages([]);
-    setMatchTime('0:00');
-    setShowBlurOverlay(false);
-    setShowChat(false);
-
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-    if (localTracksRef.current.screenTrack) {
-      try { localTracksRef.current.screenTrack.close(); } catch {}
-      localTracksRef.current.screenTrack = null;
-    }
-    if (clientRef.current) { try { clientRef.current.leave(); } catch {} clientRef.current = null; }
-    if (socketRef.current && currentRoomRef.current) socketRef.current.emit('leave_room', { room: currentRoomRef.current });
-    currentRoomRef.current = null;
-    partnerIdRef.current = null;
-  }, []);
 
   /* -- moderation -- */
   const startModerationLoop = (roomId) => {
@@ -667,7 +559,7 @@ export default function Video() {
       try {
         const screenTrack = await AgoraRTC.createScreenVideoTrack({ encoderConfig: '1080p_2' }, 'disable');
         localTracksRef.current.screenTrack = screenTrack;
-        screenTrack.on('track-ended', () => { /* trigger stop via state */ isScreenSharingRef.current = false; });
+        screenTrack.on('track-ended', () => { isScreenSharingRef.current = false; });
         await clientRef.current.publish(screenTrack);
         isScreenSharingRef.current = true;
         addToast('Screen sharing started', 'success');
@@ -727,7 +619,7 @@ export default function Video() {
     if (!text || !socketRef.current?.connected || !currentRoomRef.current) return;
     if (text.length > 500) { addToast('Too long (max 500)', 'error'); return; }
     socketRef.current.emit('message', { room: currentRoomRef.current, text });
-    addMsgToChat(text, true, 'You');
+    // Fix: Removed optimistic addMsgToChat to prevent duplicates with backend echo
     setMessageInput('');
   };
 
@@ -746,7 +638,7 @@ export default function Video() {
     setShowReport(false);
     setSelectedReport(null);
     setReportDetails('');
-    doEndCall();
+    doEndCallRef.current();
   };
 
   /* -- gifts -- */
@@ -876,7 +768,7 @@ export default function Video() {
 
   /* -- logout -- */
   const logout = () => {
-    doEndCall();
+    doEndCallRef.current();
     stopMatching();
     localStorage.removeItem('token');
     tokenRef.current = null;
@@ -897,10 +789,170 @@ export default function Video() {
   };
 
   /* -- next -- */
-  const handleNext = () => { doEndCall(); setTimeout(startMatching, 500); };
+  const handleNext = () => { doEndCallRef.current(); setTimeout(startMatching, 500); };
 
   /* -- profile computed values -- */
   const providerInfo = user ? getProviderInfo(user.provider) : getProviderInfo(null);
+
+  /* ===================== CANVAS PARTICLES ===================== */
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
+    resize();
+    window.addEventListener('resize', resize);
+
+    class P {
+      constructor() {
+        this.x = Math.random() * canvas.width;
+        this.y = Math.random() * canvas.height;
+        this.s = Math.random() * 2 + 0.5;
+        this.dx = Math.random() * 0.5 - 0.25;
+        this.dy = Math.random() * 0.5 - 0.25;
+        this.o = Math.random() * 0.5 + 0.2;
+      }
+      update() {
+        this.x += this.dx; this.y += this.dy;
+        if (this.x > canvas.width) this.x = 0;
+        if (this.x < 0) this.x = canvas.width;
+        if (this.y > canvas.height) this.y = 0;
+        if (this.y < 0) this.y = canvas.height;
+      }
+      draw() {
+        ctx.fillStyle = `rgba(99,102,241,${this.o})`;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.s, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    const particles = Array.from({ length: 50 }, () => new P());
+    let animId;
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      particles.forEach(p => { p.update(); p.draw(); });
+      animId = requestAnimationFrame(animate);
+    };
+    animate();
+    return () => { cancelAnimationFrame(animId); window.removeEventListener('resize', resize); };
+  }, []);
+
+  /* ===================== ESCAPE KEY ===================== */
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === 'Escape') {
+        setShowReport(false); setShowGifts(false); setShowEditName(false);
+        setShowAgeVerify(false); setShowAppeal(false); setShowPayment(false);
+        setShowEffects(false);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
+  /* ===================== DRAGGABLE LOCAL VIDEO ===================== */
+  useEffect(() => {
+    const wrapper = localVideoWrapperRef.current;
+    if (!wrapper) return;
+    let dragging = false, sx, sy;
+    const start = (cx, cy) => {
+      if (currentLayout === 'split') return;
+      dragging = true;
+      sx = cx - wrapper.offsetLeft;
+      sy = cy - wrapper.offsetTop;
+      wrapper.style.transition = 'none';
+    };
+    const move = (cx, cy) => {
+      if (!dragging || currentLayout !== 'float') return;
+      const x = Math.max(0, Math.min(cx - sx, window.innerWidth - wrapper.offsetWidth));
+      const y = Math.max(0, Math.min(cy - sy, window.innerHeight - wrapper.offsetHeight));
+      wrapper.style.right = 'auto'; wrapper.style.bottom = 'auto';
+      wrapper.style.left = x + 'px'; wrapper.style.top = y + 'px';
+    };
+    const end = () => { if (dragging) { dragging = false; wrapper.style.transition = ''; } };
+    const md = (e) => { if (e.target.closest('button')) return; start(e.clientX, e.clientY); };
+    const ts = (e) => { if (e.target.closest('button')) return; start(e.touches[0].clientX, e.touches[0].clientY); };
+    const mm = (e) => move(e.clientX, e.clientY);
+    const tm = (e) => { if (dragging) { e.preventDefault(); move(e.touches[0].clientX, e.touches[0].clientY); } };
+    wrapper.addEventListener('mousedown', md);
+    wrapper.addEventListener('touchstart', ts, { passive: true });
+    document.addEventListener('mousemove', mm);
+    document.addEventListener('touchmove', tm, { passive: false });
+    document.addEventListener('mouseup', end);
+    document.addEventListener('touchend', end);
+    return () => {
+      wrapper.removeEventListener('mousedown', md);
+      wrapper.removeEventListener('touchstart', ts);
+      document.removeEventListener('mousemove', mm);
+      document.removeEventListener('touchmove', tm);
+      document.removeEventListener('mouseup', end);
+      document.removeEventListener('touchend', end);
+    };
+  }, [currentLayout]);
+
+  /* ===================== SOCKET ===================== */
+  useEffect(() => {
+    if (!tokenRef.current) return;
+    const socket = io(CONFIG.BACKEND);
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      if (tokenRef.current) socket.emit('auth', { token: tokenRef.current });
+    });
+
+    socket.on('disconnect', () => {
+      if (CONFIG.DEBUG_MODE) console.log('[Omevo] Socket disconnected');
+    });
+
+    socket.on('authenticated', (d) => {
+      if (CONFIG.DEBUG_MODE) console.log('[Omevo] Socket Authenticated:', d.userId);
+    });
+
+    socket.on('match_found', (d) => {
+      if (isMatchingRef.current && !isInCallRef.current) {
+        isMatchingRef.current = false; // Fix: prevent race condition with polling
+        partnerIdRef.current = d.peerId;
+        currentRoomRef.current = d.channel;
+        setPartnerInfoState(d.peerInfo || null);
+        doStartCall(d.channel, d.peerId);
+      }
+    });
+
+    socket.on('peer_left', () => {
+      addToastRef.current('Partner disconnected', 'info');
+      doEndCallRef.current(); // Fix: end call on peer left
+    });
+
+    socket.on('banned', (d) => { doEndCallRef.current(); setBanData({ reason: d.reason, until: d.until }); });
+
+    socket.on('moderation_action', (d) => { if (d.banned) { doEndCallRef.current(); setBanData({ reason: d.reason, until: null }); } });
+
+    socket.on('message', (d) => {
+      const txt = d.text || d.message || '';
+      const own = d.uid && userIdRef.current && String(d.uid) === String(userIdRef.current); // Fix: use userIdRef
+      addMsgToChat(txt, own, own ? 'You' : (d.username || 'Stranger'));
+    });
+
+    socket.on('room_history', (d) => {
+      if (d.messages) d.messages.forEach(m => {
+        const own = m.uid && userIdRef.current && String(m.uid) === String(userIdRef.current); // Fix: use userIdRef
+        addMsgToChat(m.message || m.text, own, own ? 'You' : 'Stranger');
+      });
+    });
+
+    socket.on('report_submitted', (d) => addToastRef.current(d.message || 'Report submitted', 'success'));
+
+    socket.on('typing', (d) => {
+      if (d.uid && userIdRef.current && String(d.uid) !== String(userIdRef.current)) { // Fix: use userIdRef
+        setShowTyping(true);
+        setTimeout(() => setShowTyping(false), 3000);
+      }
+    });
+
+    socket.on('error', (d) => { if (d.message) addToastRef.current(d.message, 'error'); });
+
+    return () => { socket.disconnect(); socketRef.current = null; };
+  }, [addMsgToChat]);
 
   /* ===================== CLEANUP ON UNMOUNT ===================== */
   useEffect(() => {
@@ -1116,7 +1168,7 @@ export default function Video() {
 
           {/* Controls */}
           <div className="controls" role="toolbar" aria-label="Video Call Controls">
-            {!isInCallRef.current && !partnerInfo && (
+            {!isInCall && !partnerInfo && ( // Fix: using isInCall state instead of isInCallRef.current
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="control-btn primary" title="Start Chatting" aria-label="Start Chatting" onClick={startMatching}><i className="fas fa-play" /></button>
                 <button className="control-btn" title="Send Gift" aria-label="Send Gift" onClick={() => setShowGifts(true)}><i className="fas fa-gift" /></button>
