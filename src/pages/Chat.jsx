@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 
-// --- STYLES (Copied from your HTML for portability) ---
-// In a real project, move this to a separate .css file.
+const CONFIG = {
+  BACKEND: 'https://term-production-bf65.up.railway.app',
+};
+
+// --- STYLES ---
 const CSS_STYLES = `
   :root {
     --bg-primary: #0a0a0f;
@@ -37,7 +40,7 @@ const CSS_STYLES = `
     font-family: 'Space Grotesk', sans-serif;
     background: var(--bg-primary);
     color: var(--fg-primary);
-    overflow: hidden; /* React handles height, but keeping style consistency */
+    overflow: hidden;
   }
 
   .app-wrapper {
@@ -214,6 +217,14 @@ const CSS_STYLES = `
     color: var(--fg-secondary);
   }
 
+  /* EMPTY STATE */
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    flex: 1; color: var(--fg-muted); gap: 15px; text-align: center; padding: 40px;
+  }
+  .empty-state svg { width: 48px; height: 48px; opacity: 0.5; }
+  .empty-state p { font-size: 14px; }
+
   /* TYPING INDICATOR */
   .typing-wrapper { padding: 0 20px 10px; min-height: 30px; }
   .typing-indicator {
@@ -340,14 +351,14 @@ const CSS_STYLES = `
     padding: 14px 20px; background: var(--glass); backdrop-filter: blur(20px);
     border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 13px;
     display: flex; align-items: center; gap: 10px;
-    animation: toastSlide 0.4s var(--transition-bounce); box-shadow: var(--shadow-lg);
+    animation: toastSlide 0.4s var(--transition-bounce); box-shadow: var(--shadow-lg); color: var(--fg-primary);
   }
   @keyframes toastSlide { from { opacity: 0; transform: translateX(50px); } to { opacity: 1; transform: translateX(0); } }
   .toast.success { border-color: rgba(0, 212, 170, 0.3); }
   .toast.success .toast-icon { color: var(--accent); }
   .toast.error { border-color: rgba(255, 71, 87, 0.3); }
   .toast.error .toast-icon { color: var(--danger); }
-  .toast-icon { width: 18px; height: 18px; }
+  .toast-icon { width: 18px; height: 18px; flex-shrink: 0; }
 
   /* RESPONSIVE */
   @media (max-width: 480px) {
@@ -372,7 +383,7 @@ const OmevoChat = () => {
   const [inputValue, setInputValue] = useState('');
   const [room, setRoom] = useState(null);
   const [isSearching, setIsSearching] = useState(false);
-  const [status, setStatus] = useState('Idle'); // 'Idle', 'Searching', 'Connected'
+  const [status, setStatus] = useState('Idle');
   const [showTyping, setShowTyping] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -381,100 +392,18 @@ const OmevoChat = () => {
   const inputRef = useRef(null);
   const chatEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const tokenRef = useRef(localStorage.getItem('token'));
+  const userIdRef = useRef(null);
 
-  // -- SOCKET SETUP --
-  useEffect(() => {
-    // Initialize socket
-    socketRef.current = io("https://term-production-bf65.up.railway.app", {
-      transports: ["websocket"]
-    });
-
-    const socket = socketRef.current;
-
-    socket.on("connect", () => {
-      console.log("Connected to server");
-    });
-
-    socket.on("auth_success", () => {
-      setStatus('Searching');
-      setIsSearching(true);
-    });
-
-    socket.on("match_found", (data) => {
-      setRoom(data.channel);
-      setIsConnected(true);
-      setIsSearching(false);
-      setStatus('Connected');
-      setInputValue('');
-      
-      socket.emit("join", {
-        room: data.channel,
-        uid: data.peerId
-      });
-
-      addSystemMessage("Connected to a stranger. Say hello!");
-      showToast("Connected to a stranger!", "success");
-    });
-
-    socket.on("message", (msg) => {
-      const sender = msg.username === "You" ? "Stranger" : msg.username;
-      addMessage(msg.text, "received", sender);
-    });
-
-    socket.on("typing", () => {
-      setShowTyping(true);
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => {
-        setShowTyping(false);
-      }, 2000);
-    });
-
-    socket.on("partner_disconnected", () => {
-      addSystemMessage("Stranger has disconnected");
-      setIsConnected(false);
-      setStatus('Idle');
-      setRoom(null);
-      showToast("Stranger disconnected", "error");
-    });
-
-    socket.on("error", (err) => {
-      addSystemMessage("Error: " + err.message);
-      showToast(err.message, "error");
-    });
-
-    // Cleanup on unmount
-    return () => {
-      socket.disconnect();
-    };
-  }, []);
-
-  // -- EFFECTS --
-  
-  // Auto-scroll to bottom when messages or typing changes
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, showTyping]);
-
-  // Handle Token from URL
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
-    if (token && socketRef.current) {
-      // Logic to handle auth if needed immediately, 
-      // but usually this is sent on 'startChat'
-    }
-  }, []);
-
-  // -- HANDLERS --
-
+  // -- HELPERS --
   const addMessage = (text, type, sender = null) => {
     const now = new Date();
     const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-    setMessages(prev => [...prev, { id: Date.now(), text, type, sender, time }]);
+    setMessages(prev => [...prev, { id: Date.now() + Math.random(), text, type, sender, time }]);
   };
 
   const addSystemMessage = (text) => {
-    setMessages(prev => [...prev, { id: Date.now(), text, type: 'system' }]);
+    setMessages(prev => [...prev, { id: Date.now() + Math.random(), text, type: 'system' }]);
   };
 
   const showToast = (message, type = 'success') => {
@@ -485,45 +414,173 @@ const OmevoChat = () => {
     }, 3000);
   };
 
-  const startChat = () => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
+  // -- SOCKET SETUP --
+  useEffect(() => {
+    socketRef.current = io(CONFIG.BACKEND, {
+      transports: ["websocket"]
+    });
+
+    const socket = socketRef.current;
+
+    socket.on("connect", () => {
+      if (tokenRef.current) {
+        socket.emit("auth", { token: tokenRef.current });
+      }
+    });
+
+    socket.on("authenticated", (data) => {
+      if (data?.userId) {
+        userIdRef.current = data.userId;
+      }
+    });
+
+    socket.on("match_found", (data) => {
+      handleMatchFound(data);
+    });
+
+    socket.on("message", (msg) => {
+      const txt = msg.text || msg.message || '';
+      const isOwn = msg.uid && userIdRef.current && String(msg.uid) === String(userIdRef.current);
+      const sender = isOwn ? "You" : (msg.username || "Stranger");
+      addMessage(txt, isOwn ? "sent" : "received", sender);
+    });
+
+    socket.on("typing", (data) => {
+      if (data?.uid && String(data.uid) !== String(userIdRef.current)) {
+        setShowTyping(true);
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(() => {
+          setShowTyping(false);
+        }, 2000);
+      }
+    });
+
+    socket.on("peer_left", () => {
+      addSystemMessage("Stranger has disconnected");
+      setIsConnected(false);
+      setStatus('Idle');
+      setRoom(null);
+      showToast("Stranger disconnected", "error");
+    });
+
+    socket.on("banned", (d) => { 
+      addSystemMessage("You have been banned. Reason: " + (d.reason || 'Violation'));
+      setIsConnected(false);
+      setIsSearching(false);
+      setStatus('Idle');
+      setRoom(null);
+      showToast("You have been banned", "error");
+    });
+
+    socket.on("moderation_action", (d) => { 
+      if (d.banned) {
+        addSystemMessage("Banned for inappropriate content.");
+        setIsConnected(false);
+        setIsSearching(false);
+        setStatus('Idle');
+        setRoom(null);
+        showToast("Banned for inappropriate content", "error");
+      }
+    });
+
+    socket.on("error", (err) => {
+      showToast(err.message || "Socket error", "error");
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, showTyping]);
+
+  // -- MATCHING LOGIC --
+  const handleMatchFound = (data) => {
+    if (!data?.channel) return;
+    setRoom(data.channel);
+    setIsConnected(true);
+    setIsSearching(false);
+    setStatus('Connected');
+    setInputValue('');
+    setMessages([]); // Clear old messages for new chat
     
-    setIsSearching(true);
-    setStatus('Searching');
-    socketRef.current.emit("auth", { token });
+    socketRef.current.emit("join_room", { room: data.channel });
+
+    addSystemMessage("Connected to a stranger. Say hello!");
+    showToast("Connected to a stranger!", "success");
+    inputRef.current?.focus();
   };
 
+  const startChat = async () => {
+    if (!tokenRef.current) {
+      showToast("Authentication required. Please log in.", "error");
+      return;
+    }
+
+    setIsSearching(true);
+    setStatus('Searching');
+    setMessages([]);
+
+    try {
+      const r = await fetch(CONFIG.BACKEND + '/queue/enqueue', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': 'Bearer ' + tokenRef.current 
+        },
+        body: JSON.stringify({
+          gender: 'any',
+          looking_for: 'any',
+          location: 'any',
+          interests: []
+        })
+      });
+
+      const d = await r.json();
+      
+      if (!r.ok || d.error) {
+        showToast(d.error || "Failed to join queue", "error");
+        setIsSearching(false);
+        setStatus('Idle');
+        return;
+      }
+
+      if (d.matched) {
+        handleMatchFound({ channel: d.channel, peerId: d.peerId, peerInfo: d.peerInfo });
+      } else {
+        addSystemMessage("Looking for someone to chat with...");
+        showToast("Searching for a match...", "success");
+      }
+    } catch (e) {
+      showToast("Network error. Please try again.", "error");
+      setIsSearching(false);
+      setStatus('Idle');
+    }
+  };
+
+  // -- CHAT LOGIC --
   const sendMsg = () => {
     const text = inputValue.trim();
     if (!text || !room) return;
 
-    socketRef.current.emit("message", {
-      room: room,
-      text: text
-    });
-
-    addMessage(text, "sent", "You");
+    socketRef.current.emit("message", { room, text });
     setInputValue('');
   };
 
   const skip = () => {
     if (!room) return;
 
-    socketRef.current.emit("skip", { room });
+    socketRef.current.emit("leave_room", { room });
     setRoom(null);
     setIsConnected(false);
     setStatus('Idle');
-    
-    // Clear messages except system? The original JS clears non-system msgs.
-    // React state filter:
-    setMessages(prev => prev.filter(m => m.type === 'system'));
-
-    // Re-show search screen logic is handled by `!isConnected` in render
+    setMessages([]);
     showToast("Skipped to next stranger", "success");
   };
 
-  // Finish the Input Keydown Handler
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -538,15 +595,12 @@ const OmevoChat = () => {
     }
   };
 
-  // Global Keyboard Shortcuts (Esc to skip, / to focus)
+  // Global Keyboard Shortcuts
   useEffect(() => {
     const handleGlobalKey = (e) => {
-      // Skip with Escape
       if (e.key === "Escape" && room) {
         skip();
       }
-      
-      // Focus input with /
       if (e.key === "/" && isConnected && document.activeElement !== inputRef.current) {
         e.preventDefault();
         inputRef.current?.focus();
@@ -555,9 +609,9 @@ const OmevoChat = () => {
 
     window.addEventListener("keydown", handleGlobalKey);
     return () => window.removeEventListener("keydown", handleGlobalKey);
-  }, [room, isConnected]); // Dependencies
+  }, [room, isConnected]);
 
-  // Handle Visibility Change (Focus input when tab becomes visible)
+  // Focus input when tab becomes visible
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && isConnected) {
@@ -571,10 +625,8 @@ const OmevoChat = () => {
   // -- RENDER --
   return (
     <>
-      {/* Inject CSS Styles */}
       <style>{CSS_STYLES}</style>
 
-      {/* MAIN WRAPPER */}
       <div className="app-wrapper">
         
         {/* ANIMATED BACKGROUND */}
@@ -588,7 +640,7 @@ const OmevoChat = () => {
           </div>
         </div>
 
-        {/* SEARCH SCREEN (Hidden when connected) */}
+        {/* SEARCH SCREEN */}
         <div className={`search-screen ${isConnected ? 'hidden' : ''}`}>
           <div className="bg-layer">
             <div className="bg-gradient"></div>
@@ -611,7 +663,7 @@ const OmevoChat = () => {
               </div>
               <h2 className="search-title">Ready to connect?</h2>
               <p className="search-subtitle">Meet new people from around the world. Be respectful and have fun conversations.</p>
-              <button className="btn-start" onClick={startChat}>Start Chat</button>
+              <button className="btn-start" onClick={startChat}>Start Text Chat</button>
             </div>
           ) : (
             <div className="searching-state visible">
@@ -619,16 +671,19 @@ const OmevoChat = () => {
               <div className="searching-text">
                 Finding someone for you<span className="searching-dots"><span>.</span><span>.</span><span>.</span></span>
               </div>
+              <button className="btn btn-skip" style={{ marginTop: '20px' }} onClick={() => { setIsSearching(false); setStatus('Idle'); fetch(CONFIG.BACKEND + '/queue/leave', { method: 'POST', headers: { 'Authorization': 'Bearer ' + tokenRef.current } }).catch(()=>{}); }}>
+                Cancel
+              </button>
             </div>
           )}
         </div>
 
         {/* MAIN CHAT INTERFACE */}
-        <div className="main-container">
+        <div className="main-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', opacity: isConnected ? 1 : 0, pointerEvents: isConnected ? 'auto' : 'none', transition: 'opacity 0.3s ease' }}>
           <header>
             <div className="logo">
               <div className="logo-icon"></div>
-              <h1>Omevo</h1>
+              <h1>Omevo Text</h1>
             </div>
             <div className="header-actions">
               <button className="icon-btn" onClick={() => showToast("Theme toggle coming soon!", "success")}>
@@ -688,7 +743,6 @@ const OmevoChat = () => {
                 </div>
               ))}
               
-              {/* Invisible div to scroll to bottom */}
               <div ref={chatEndRef} />
             </div>
           </div>
@@ -713,10 +767,10 @@ const OmevoChat = () => {
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
                 placeholder="Type a message..."
-                maxLength={1000}
+                maxLength={500}
                 disabled={!isConnected}
               />
-              <span className="char-counter">{inputValue.length}/1000</span>
+              <span className="char-counter">{inputValue.length}/500</span>
             </div>
             <button 
               className="btn btn-send" 
