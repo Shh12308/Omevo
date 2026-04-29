@@ -10,6 +10,7 @@ const CONFIG = {
   DEBUG_MODE: true,
   MODERATION_INTERVAL: 2000,
   HEARTBEAT_INTERVAL: 5000,
+  TRACK_RECOVERY_DELAY: 1000,
 };
 
 /* ===================== PURE HELPERS ===================== */
@@ -86,6 +87,7 @@ export default function Video() {
   const [currentLayout, setCurrentLayout] = useState('float');
   const [activeEffect, setActiveEffect] = useState('none');
   const [toasts, setToasts] = useState([]);
+  const [isRecoveringTracks, setIsRecoveringTracks] = useState(false);
 
   /* ---------- form state ---------- */
   const [genderSelect, setGenderSelect] = useState('male');
@@ -126,6 +128,10 @@ export default function Video() {
   });
   const stripeRef = useRef(null);
   const userIdRef = useRef(null);
+  const trackRecoveryTimeoutRef = useRef(null);
+  const isPageVisibleRef = useRef(true);
+  const audioContextStateRef = useRef('running');
+  const pendingTrackRecoveryRef = useRef(false);
 
   /* ===================== TOAST ===================== */
   const addToast = useCallback((msg, type = 'info', title = '') => {
@@ -172,6 +178,219 @@ export default function Video() {
     setMatchTime('0:00');
   }, []);
 
+  /* ===================== TRACK RECOVERY (iOS 18.7 FIX) ===================== */
+  const recoverTracks = useCallback(async () => {
+    if (isRecoveringTracks) return;
+    
+    const AgoraRTC = window.AgoraRTC;
+    if (!AgoraRTC || !permissionsRef.current) return;
+
+    setIsRecoveringTracks(true);
+    console.log('[Track Recovery] Starting track recovery...');
+
+    try {
+      // Check if tracks are actually ended
+      const audioEnded = !localTracksRef.current.audioTrack || 
+        localTracksRef.current.audioTrack._processor?.ended === true ||
+        (localTracksRef.current.audioTrack.getMediaStreamTrack && 
+         localTracksRef.current.audioTrack.getMediaStreamTrack().readyState === 'ended');
+      
+      const videoEnded = !localTracksRef.current.videoTrack || 
+        localTracksRef.current.videoTrack._processor?.ended === true ||
+        (localTracksRef.current.videoTrack.getMediaStreamTrack && 
+         localTracksRef.current.videoTrack.getMediaStreamTrack().readyState === 'ended');
+
+      if (CONFIG.DEBUG_MODE) {
+        console.log('[Track Recovery] Audio ended:', audioEnded, 'Video ended:', videoEnded);
+      }
+
+      if (!audioEnded && !videoEnded) {
+        console.log('[Track Recovery] Tracks are healthy, no recovery needed');
+        setIsRecoveringTracks(false);
+        return;
+      }
+
+      // Close old tracks
+      if (localTracksRef.current.audioTrack) {
+        try { localTracksRef.current.audioTrack.close(); } catch (e) { console.warn('[Track Recovery] Error closing audio:', e); }
+      }
+      if (localTracksRef.current.videoTrack) {
+        try { localTracksRef.current.videoTrack.close(); } catch (e) { console.warn('[Track Recovery] Error closing video:', e); }
+      }
+
+      // Create new tracks
+      const newAudio = await AgoraRTC.createMicrophoneAudioTrack();
+      const newVideo = await AgoraRTC.createCameraVideoTrack({
+        encoderConfig: { width: 1280, height: 720, frameRate: 30, bitrate: 1710 },
+      });
+
+      localTracksRef.current.audioTrack = newAudio;
+      localTracksRef.current.videoTrack = newVideo;
+
+      // Play local video
+      if (localVideoDivRef.current) {
+        newVideo.play(localVideoDivRef.current);
+      }
+
+      // If in call, republish tracks
+      if (isInCallRef.current && clientRef.current) {
+        try {
+          // Unpublish old tracks (they should already be closed)
+          // Publish new tracks
+          await clientRef.current.publish([newAudio, newVideo]);
+          console.log('[Track Recovery] Tracks republished successfully');
+        } catch (e) {
+          console.error('[Track Recovery] Failed to republish tracks:', e);
+          // If republish fails, we might need to rejoin
+          addToastRef.current('Reconnecting...', 'info');
+        }
+      }
+
+      // Re-apply effect if any
+      if (activeEffect !== 'none') {
+        const v = localVideoDivRef.current?.querySelector('video');
+        if (v) {
+          const filters = { 
+            none: '', blur: 'blur(5px)', grayscale: 'grayscale(100%)', 
+            sepia: 'sepia(100%)', invert: 'invert(100%)', contrast: 'contrast(150%)' 
+          };
+          v.style.filter = filters[activeEffect] || '';
+        }
+      }
+
+      addToastRef.current('Camera recovered', 'success');
+      console.log('[Track Recovery] Recovery successful');
+    } catch (e) {
+      console.error('[Track Recovery] Recovery failed:', e);
+      addToastRef.current('Failed to recover camera. Please restart.', 'error');
+      
+      // Don't end call on recovery failure - user can manually restart
+      // doEndCallRef.current();
+    } finally {
+      setIsRecoveringTracks(false);
+      pendingTrackRecoveryRef.current = false;
+    }
+  }, [activeEffect]);
+
+  const scheduleTrackRecovery = useCallback(() => {
+    if (pendingTrackRecoveryRef.current) return;
+    pendingTrackRecoveryRef.current = true;
+    
+    // Clear any existing timeout
+    if (trackRecoveryTimeoutRef.current) {
+      clearTimeout(trackRecoveryTimeoutRef.current);
+    }
+    
+    // Delay recovery to avoid rapid recovery attempts
+    trackRecoveryTimeoutRef.current = setTimeout(() => {
+      recoverTracks();
+    }, CONFIG.TRACK_RECOVERY_DELAY);
+  }, [recoverTracks]);
+
+  /* ===================== SET UP TRACK EVENT LISTENERS ===================== */
+  const setupTrackListeners = useCallback(() => {
+    const audioTrack = localTracksRef.current.audioTrack;
+    const videoTrack = localTracksRef.current.videoTrack;
+
+    if (audioTrack && audioTrack.getMediaStreamTrack) {
+      const audioStreamTrack = audioTrack.getMediaStreamTrack();
+      if (audioStreamTrack) {
+        audioStreamTrack.onended = () => {
+          console.warn('[Track Event] Audio track ended unexpectedly');
+          scheduleTrackRecovery();
+        };
+      }
+    }
+
+    if (videoTrack && videoTrack.getMediaStreamTrack) {
+      const videoStreamTrack = videoTrack.getMediaStreamTrack();
+      if (videoStreamTrack) {
+        videoStreamTrack.onended = () => {
+          console.warn('[Track Event] Video track ended unexpectedly');
+          scheduleTrackRecovery();
+        };
+      }
+    }
+  }, [scheduleTrackRecovery]);
+
+  /* ===================== VISIBILITY CHANGE HANDLER (iOS FIX) ===================== */
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const isVisible = document.visibilityState === 'visible';
+      isPageVisibleRef.current = isVisible;
+      
+      console.log('[Visibility] Page visible:', isVisible, 'In call:', isInCallRef.current);
+      
+      if (isVisible && isInCallRef.current && permissionsRef.current) {
+        // Page became visible while in call - check if we need to recover tracks
+        // Use a slightly longer delay to let iOS finish its interruption handling
+        setTimeout(() => {
+          // Check if tracks need recovery
+          const audioTrack = localTracksRef.current.audioTrack;
+          const videoTrack = localTracksRef.current.videoTrack;
+          
+          let needsRecovery = false;
+          
+          if (audioTrack && audioTrack.getMediaStreamTrack) {
+            const state = audioTrack.getMediaStreamTrack().readyState;
+            if (state === 'ended') needsRecovery = true;
+          }
+          
+          if (videoTrack && videoTrack.getMediaStreamTrack) {
+            const state = videoTrack.getMediaStreamTrack().readyState;
+            if (state === 'ended') needsRecovery = true;
+          }
+          
+          if (needsRecovery) {
+            console.log('[Visibility] Tracks ended during background, scheduling recovery');
+            scheduleTrackRecovery();
+          }
+        }, 500);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [scheduleTrackRecovery]);
+
+  /* ===================== iOS AUDIO INTERRUPTION HANDLER ===================== */
+  useEffect(() => {
+    const handleAudioInterruption = (e) => {
+      const state = e.detail?.state || 'unknown';
+      audioContextStateRef.current = state;
+      
+      console.log('[iOS Audio Interruption] State:', state);
+      
+      if (state === 'ended' || state === 'interrupted') {
+        // Audio was interrupted - tracks may have ended
+        if (isInCallRef.current && permissionsRef.current) {
+          console.log('[iOS Audio Interruption] Will check tracks when interruption ends');
+        }
+      } else if (state === 'running') {
+        // Interruption ended - check if tracks need recovery
+        if (isInCallRef.current && permissionsRef.current) {
+          setTimeout(() => {
+            const audioTrack = localTracksRef.current.audioTrack;
+            if (audioTrack && audioTrack.getMediaStreamTrack) {
+              const trackState = audioTrack.getMediaStreamTrack().readyState;
+              if (trackState === 'ended') {
+                console.log('[iOS Audio Interruption] Audio track ended after interruption, recovering');
+                scheduleTrackRecovery();
+              }
+            }
+          }, 300);
+        }
+      }
+    };
+
+    // Listen for custom Agora events for iOS interruptions
+    window.addEventListener('agora-audio-interruption', handleAudioInterruption);
+    
+    return () => {
+      window.removeEventListener('agora-audio-interruption', handleAudioInterruption);
+    };
+  }, [scheduleTrackRecovery]);
+
   /* ===================== CORE FUNCTIONS ===================== */
 
   /* -- end call -- */
@@ -190,15 +409,22 @@ export default function Video() {
     // FIX: Pause before clearing to prevent "Load failed" console error
     if (remoteVideoRef.current) {
       remoteVideoRef.current.pause();
+      remoteVideoRef.current.removeAttribute('src');
       remoteVideoRef.current.srcObject = null;
+      remoteVideoRef.current.load();
     }
 
     if (localTracksRef.current.screenTrack) {
       try { localTracksRef.current.screenTrack.close(); } catch {}
       localTracksRef.current.screenTrack = null;
     }
-    if (clientRef.current) { try { clientRef.current.leave(); } catch {} clientRef.current = null; }
-    if (socketRef.current && currentRoomRef.current) socketRef.current.emit('leave_room', { room: currentRoomRef.current });
+    if (clientRef.current) { 
+      try { clientRef.current.leave(); } catch (e) { console.warn('[End Call] Leave error:', e); } 
+      clientRef.current = null; 
+    }
+    if (socketRef.current && currentRoomRef.current) {
+      socketRef.current.emit('leave_room', { room: currentRoomRef.current });
+    }
     currentRoomRef.current = null;
     partnerIdRef.current = null;
   }, [stopMatchTimer]);
@@ -230,32 +456,79 @@ export default function Video() {
 
       const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
       clientRef.current = client;
+      
+      // Enable audio context interruption handling for iOS
+      if (client._audioContext) {
+        client._audioContext.onstatechange = () => {
+          const state = client._audioContext.state;
+          console.log('[Agora AudioContext] State changed:', state);
+          
+          // Dispatch custom event for our handler
+          window.dispatchEvent(new CustomEvent('agora-audio-interruption', {
+            detail: { state }
+          }));
+        };
+      }
+      
       await client.join(td.appID || CONFIG.AGORA_APP_ID, channelName, td.rtcToken, uid);
 
-      if (!localTracksRef.current.audioTrack) localTracksRef.current.audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
-      if (!localTracksRef.current.videoTrack) {
-        localTracksRef.current.videoTrack = await AgoraRTC.createCameraVideoTrack();
+      // Create or reuse tracks
+      if (!localTracksRef.current.audioTrack || 
+          (localTracksRef.current.audioTrack.getMediaStreamTrack && 
+           localTracksRef.current.audioTrack.getMediaStreamTrack().readyState === 'ended')) {
+        localTracksRef.current.audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+      }
+      
+      if (!localTracksRef.current.videoTrack || 
+          (localTracksRef.current.videoTrack.getMediaStreamTrack && 
+           localTracksRef.current.videoTrack.getMediaStreamTrack().readyState === 'ended')) {
+        localTracksRef.current.videoTrack = await AgoraRTC.createCameraVideoTrack({
+          encoderConfig: { width: 1280, height: 720, frameRate: 30, bitrate: 1710 },
+        });
         localTracksRef.current.videoTrack.play(localVideoDivRef.current);
       }
+      
+      // Set up track ended listeners
+      setupTrackListeners();
       
       await client.publish([localTracksRef.current.audioTrack, localTracksRef.current.videoTrack]);
 
       client.on('user-published', async (u, mediaType) => {
-        await client.subscribe(u, mediaType);
-        if (mediaType === 'video') {
-          const el = remoteVideoRef.current;
-          if (el) {
-            el.srcObject = new MediaStream([u.videoTrack.getMediaStreamTrack()]);
-            el.play().catch(() => {});
+        try {
+          await client.subscribe(u, mediaType);
+          if (mediaType === 'video') {
+            const el = remoteVideoRef.current;
+            if (el) {
+              // Clear previous source first
+              el.pause();
+              el.removeAttribute('src');
+              el.srcObject = null;
+              
+              el.srcObject = new MediaStream([u.videoTrack.getMediaStreamTrack()]);
+              el.play().catch(e => {
+                console.warn('[Remote Video] Play error:', e);
+              });
+            }
           }
+          if (mediaType === 'audio') {
+            u.audioTrack.play().catch(e => {
+              console.warn('[Remote Audio] Play error:', e);
+            });
+          }
+        } catch (e) {
+          console.error('[User Published] Subscribe error:', e);
         }
-        if (mediaType === 'audio') u.audioTrack.play();
       });
       
       client.on('user-unpublished', (u, m) => {
         if (m === 'video' && remoteVideoRef.current) {
-          remoteVideoRef.current.pause(); // FIX: Pause before clearing
+          remoteVideoRef.current.pause();
+          remoteVideoRef.current.removeAttribute('src');
           remoteVideoRef.current.srcObject = null;
+          remoteVideoRef.current.load();
+        }
+        if (m === 'audio' && u.audioTrack) {
+          try { u.audioTrack.stop(); } catch {}
         }
       });
 
@@ -267,6 +540,14 @@ export default function Video() {
       client.on('network-quality', (s) => {
         const q = s.downlinkNetworkQuality;
         setNetworkQuality(q <= 1 ? 'excellent' : q === 2 ? 'good' : q === 3 ? 'poor' : 'bad');
+      });
+      
+      // Handle connection state changes
+      client.on('connection-state-change', (curState, revState, reason) => {
+        console.log('[Agora] Connection state:', curState, 'Reason:', reason);
+        if (curState === 'DISCONNECTED' && isInCallRef.current) {
+          addToastRef.current('Connection lost. Reconnecting...', 'error');
+        }
       });
 
       socketRef.current?.emit('join_room', { room: channelName });
@@ -304,13 +585,22 @@ export default function Video() {
     try {
       const AgoraRTC = window.AgoraRTC;
       if (!AgoraRTC) throw new Error('AgoraRTC not loaded');
+      
+      // Request audio first (iOS may need user interaction)
       const audio = await AgoraRTC.createMicrophoneAudioTrack();
+      
+      // Then request video
       const video = await AgoraRTC.createCameraVideoTrack({
         encoderConfig: { width: 1280, height: 720, frameRate: 30, bitrate: 1710 },
       });
+      
       localTracksRef.current.audioTrack = audio;
       localTracksRef.current.videoTrack = video;
       video.play(localVideoDivRef.current);
+      
+      // Set up track ended listeners immediately
+      setupTrackListeners();
+      
       permissionsRef.current = true;
       setShowPermission(false);
       setLoading(false);
@@ -341,7 +631,10 @@ export default function Video() {
         setInterestsInput((p.interests || []).join(', '));
         preferencesRef.current = { ...preferencesRef.current, ...p };
       }
-    } catch { /* silent */ }
+    } catch (e) { 
+      console.warn('Load settings error:', e.message);
+      // Don't show error to user for non-critical settings load
+    }
   };
 
   /* -- load profile -- */
@@ -356,9 +649,14 @@ export default function Video() {
         setUserCoins(u.coins || 0);
       } else {
         console.warn('Load profile failed:', r.status);
+        // Only show error if not a network issue (likely temporary)
+        if (r.status !== 0 && r.status !== 503) {
+          // Silent fail for profile - not critical
+        }
       }
     } catch (e) { 
-      console.warn('Load profile error:', e.message); 
+      console.warn('Load profile error:', e.message);
+      // Silent fail for network errors
     }
   };
 
@@ -454,6 +752,22 @@ export default function Video() {
     }
     if (!tokenRef.current) { addToast('Please log in', 'error'); return; }
     if (!socketRef.current || !socketRef.current.connected) return;
+
+    // Check if tracks need recovery before starting match
+    const audioTrack = localTracksRef.current.audioTrack;
+    const videoTrack = localTracksRef.current.videoTrack;
+    
+    if (audioTrack && audioTrack.getMediaStreamTrack && audioTrack.getMediaStreamTrack().readyState === 'ended') {
+      addToast('Recovering camera...', 'info');
+      await recoverTracks();
+      return;
+    }
+    
+    if (videoTrack && videoTrack.getMediaStreamTrack && videoTrack.getMediaStreamTrack().readyState === 'ended') {
+      addToast('Recovering camera...', 'info');
+      await recoverTracks();
+      return;
+    }
 
     isMatchingRef.current = true;
     setShowBlurOverlay(true);
@@ -569,7 +883,10 @@ export default function Video() {
       try {
         const screenTrack = await AgoraRTC.createScreenVideoTrack({ encoderConfig: '1080p_2' }, 'disable');
         localTracksRef.current.screenTrack = screenTrack;
-        screenTrack.on('track-ended', () => { isScreenSharingRef.current = false; });
+        screenTrack.on('track-ended', () => { 
+          isScreenSharingRef.current = false;
+          addToast('Screen sharing ended', 'info');
+        });
         await clientRef.current.publish(screenTrack);
         isScreenSharingRef.current = true;
         addToast('Screen sharing started', 'success');
@@ -968,6 +1285,7 @@ export default function Video() {
     return () => {
       if (matchTimerRef.current) clearInterval(matchTimerRef.current);
       if (moderationRef.current) clearInterval(moderationRef.current);
+      if (trackRecoveryTimeoutRef.current) clearTimeout(trackRecoveryTimeoutRef.current);
       if (socketRef.current) socketRef.current.disconnect();
       if (clientRef.current) try { clientRef.current.leave(); } catch {}
       Object.values(localTracksRef.current).forEach(t => { if (t) try { t.close(); } catch {} });
@@ -1137,8 +1455,14 @@ export default function Video() {
           )}
 
           {/* Local Video */}
-          <div ref={localVideoWrapperRef} id="localVideoWrapper">
+          <div ref={localVideoWrapperRef} id="localVideoWrapper" style={{ opacity: isRecoveringTracks ? 0.5 : 1 }}>
             <div ref={localVideoDivRef} id="localVideo" style={{ width: '100%', height: '100%' }} />
+            {isRecoveringTracks && (
+              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: 'white', textAlign: 'center' }}>
+                <i className="fas fa-sync fa-spin" style={{ fontSize: '1.5rem', marginBottom: 8 }} />
+                <div style={{ fontSize: '0.8rem' }}>Recovering...</div>
+              </div>
+            )}
             <button id="pipBtn" title="Picture in Picture" aria-label="Toggle Picture in Picture" onClick={togglePiP}><i className="fas fa-external-link-alt" /></button>
             <button id="resetPositionBtn" title="Reset Position" aria-label="Reset Video Position" onClick={resetVideoPosition}><i className="fas fa-compress" /></button>
           </div>
@@ -1179,7 +1503,9 @@ export default function Video() {
           <div className="controls" role="toolbar" aria-label="Video Call Controls">
             {!isInCall && !partnerInfo ? (
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="control-btn primary" title="Start Chatting" aria-label="Start Chatting" onClick={startMatching}><i className="fas fa-play" /></button>
+                <button className="control-btn primary" title="Start Chatting" aria-label="Start Chatting" onClick={startMatching} disabled={isRecoveringTracks}>
+                  <i className={`fas ${isRecoveringTracks ? 'fa-spinner fa-spin' : 'fa-play'}`} />
+                </button>
                 <button className="control-btn" title="Send Gift" aria-label="Send Gift" onClick={() => setShowGifts(true)}><i className="fas fa-gift" /></button>
                 <button className="control-btn" title="Video Effects" aria-label="Video Effects" onClick={() => setShowEffects(v => !v)}><i className="fas fa-magic" /></button>
               </div>
