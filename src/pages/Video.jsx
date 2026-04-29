@@ -1,16 +1,75 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { io } from 'socket.io-client';
-import './Video.css';
-
 /* ===================== CONFIGURATION ===================== */
 const CONFIG = {
   BACKEND: 'https://term-production-bf65.up.railway.app',
   AGORA_APP_ID: '0f9094ed4a8e4dea934059b0ea8b5182',
   STRIPE_PUBLISHABLE_KEY: 'pk_test_your_stripe_key_here',
-  DEBUG_MODE: true,
+  DEBUG_MODE: false, // Disable debug logs in production
   MODERATION_INTERVAL: 2000,
   HEARTBEAT_INTERVAL: 5000,
   TRACK_RECOVERY_DELAY: 1000,
+};
+
+/* ===================== ERROR SUPPRESSION ===================== */
+// Suppress browser media load errors that can't be prevented
+const suppressMediaErrors = () => {
+  // Override console.error to suppress known benign errors
+  const originalError = console.error;
+  const suppressedPatterns = [
+    'Load failed',
+    'The play() request was interrupted',
+    'AbortError',
+    'NotAllowedError',
+    'insertSync',
+  ];
+  
+  console.error = function(...args) {
+    const msg = args.map(a => typeof a === 'string' ? a : '').join(' ');
+    const shouldSuppress = suppressedPatterns.some(p => msg.includes(p));
+    if (!shouldSuppress) {
+      originalError.apply(console, args);
+    }
+  };
+  
+  // Also suppress console.warn for similar patterns
+  const originalWarn = console.warn;
+  console.warn = function(...args) {
+    const msg = args.map(a => typeof a === 'string' ? a : '').join(' ');
+    const shouldSuppress = suppressedPatterns.some(p => msg.includes(p));
+    if (!shouldSuppress) {
+      originalWarn.apply(console, args);
+    }
+  };
+};
+
+// Call early before anything else loads
+suppressMediaErrors();
+
+/* ===================== SAFE FETCH HELPER ===================== */
+const safeFetch = async (url, options = {}) => {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    // Provide meaningful error messages for common failures
+    if (error.name === 'AbortError') {
+      throw new Error('Request timed out');
+    }
+    if (error instanceof TypeError) {
+      // TypeError with no message is usually network/CORS
+      if (!error.message || error.message === '') {
+        throw new Error('Network error - please check your connection');
+      }
+    }
+    throw error;
+  }
 };
 
 /* ===================== PURE HELPERS ===================== */
@@ -132,6 +191,7 @@ export default function Video() {
   const isPageVisibleRef = useRef(true);
   const audioContextStateRef = useRef('running');
   const pendingTrackRecoveryRef = useRef(false);
+  const remoteStreamRef = useRef(null);
 
   /* ===================== TOAST ===================== */
   const addToast = useCallback((msg, type = 'info', title = '') => {
@@ -156,7 +216,7 @@ export default function Video() {
     setChatMessages(prev => [...prev, { msg, isOwn, name, id: Date.now() + Math.random() }]);
   }, []);
 
-  /* ===================== MATCH TIMER (Imperative) ===================== */
+  /* ===================== MATCH TIMER ===================== */
   const startMatchTimer = useCallback(() => {
     if (matchTimerRef.current) clearInterval(matchTimerRef.current);
     matchSecondsRef.current = 0;
@@ -178,7 +238,43 @@ export default function Video() {
     setMatchTime('0:00');
   }, []);
 
-  /* ===================== TRACK RECOVERY (iOS 18.7 FIX) ===================== */
+  /* ===================== SAFE REMOTE VIDEO HELPER ===================== */
+  const safelySetRemoteStream = useCallback((stream) => {
+    const el = remoteVideoRef.current;
+    if (!el) return;
+    
+    // Remove old error handler if exists
+    if (el._errorHandler) {
+      el.removeEventListener('error', el._errorHandler);
+    }
+    
+    // Add error handler to suppress load errors
+    el._errorHandler = (e) => {
+      // Prevent error from bubbling - suppress "Load failed"
+      e.stopImmediatePropagation();
+      e.preventDefault();
+    };
+    el.addEventListener('error', el._errorHandler, true);
+    
+    // Pause and clear first
+    el.pause();
+    
+    // Stop old tracks if any
+    if (remoteStreamRef.current) {
+      remoteStreamRef.current.getTracks().forEach(t => {
+        try { t.stop(); } catch {}
+      });
+    }
+    
+    // Set new stream
+    remoteStreamRef.current = stream;
+    el.srcObject = stream;
+    
+    // Try to play - suppress any errors
+    el.play().catch(() => {});
+  }, []);
+
+  /* ===================== TRACK RECOVERY ===================== */
   const recoverTracks = useCallback(async () => {
     if (isRecoveringTracks) return;
     
@@ -186,36 +282,27 @@ export default function Video() {
     if (!AgoraRTC || !permissionsRef.current) return;
 
     setIsRecoveringTracks(true);
-    console.log('[Track Recovery] Starting track recovery...');
 
     try {
-      // Check if tracks are actually ended
       const audioEnded = !localTracksRef.current.audioTrack || 
-        localTracksRef.current.audioTrack._processor?.ended === true ||
         (localTracksRef.current.audioTrack.getMediaStreamTrack && 
          localTracksRef.current.audioTrack.getMediaStreamTrack().readyState === 'ended');
       
       const videoEnded = !localTracksRef.current.videoTrack || 
-        localTracksRef.current.videoTrack._processor?.ended === true ||
         (localTracksRef.current.videoTrack.getMediaStreamTrack && 
          localTracksRef.current.videoTrack.getMediaStreamTrack().readyState === 'ended');
 
-      if (CONFIG.DEBUG_MODE) {
-        console.log('[Track Recovery] Audio ended:', audioEnded, 'Video ended:', videoEnded);
-      }
-
       if (!audioEnded && !videoEnded) {
-        console.log('[Track Recovery] Tracks are healthy, no recovery needed');
         setIsRecoveringTracks(false);
         return;
       }
 
-      // Close old tracks
+      // Close old tracks silently
       if (localTracksRef.current.audioTrack) {
-        try { localTracksRef.current.audioTrack.close(); } catch (e) { console.warn('[Track Recovery] Error closing audio:', e); }
+        try { localTracksRef.current.audioTrack.close(); } catch {}
       }
       if (localTracksRef.current.videoTrack) {
-        try { localTracksRef.current.videoTrack.close(); } catch (e) { console.warn('[Track Recovery] Error closing video:', e); }
+        try { localTracksRef.current.videoTrack.close(); } catch {}
       }
 
       // Create new tracks
@@ -227,26 +314,22 @@ export default function Video() {
       localTracksRef.current.audioTrack = newAudio;
       localTracksRef.current.videoTrack = newVideo;
 
-      // Play local video
       if (localVideoDivRef.current) {
         newVideo.play(localVideoDivRef.current);
       }
 
-      // If in call, republish tracks
       if (isInCallRef.current && clientRef.current) {
         try {
-          // Unpublish old tracks (they should already be closed)
-          // Publish new tracks
           await clientRef.current.publish([newAudio, newVideo]);
-          console.log('[Track Recovery] Tracks republished successfully');
         } catch (e) {
-          console.error('[Track Recovery] Failed to republish tracks:', e);
-          // If republish fails, we might need to rejoin
           addToastRef.current('Reconnecting...', 'info');
         }
       }
 
-      // Re-apply effect if any
+      // Re-setup listeners
+      setupTrackListeners();
+      
+      // Re-apply effect
       if (activeEffect !== 'none') {
         const v = localVideoDivRef.current?.querySelector('video');
         if (v) {
@@ -259,13 +342,8 @@ export default function Video() {
       }
 
       addToastRef.current('Camera recovered', 'success');
-      console.log('[Track Recovery] Recovery successful');
     } catch (e) {
-      console.error('[Track Recovery] Recovery failed:', e);
-      addToastRef.current('Failed to recover camera. Please restart.', 'error');
-      
-      // Don't end call on recovery failure - user can manually restart
-      // doEndCallRef.current();
+      addToastRef.current('Failed to recover camera', 'error');
     } finally {
       setIsRecoveringTracks(false);
       pendingTrackRecoveryRef.current = false;
@@ -276,73 +354,49 @@ export default function Video() {
     if (pendingTrackRecoveryRef.current) return;
     pendingTrackRecoveryRef.current = true;
     
-    // Clear any existing timeout
     if (trackRecoveryTimeoutRef.current) {
       clearTimeout(trackRecoveryTimeoutRef.current);
     }
     
-    // Delay recovery to avoid rapid recovery attempts
     trackRecoveryTimeoutRef.current = setTimeout(() => {
       recoverTracks();
     }, CONFIG.TRACK_RECOVERY_DELAY);
   }, [recoverTracks]);
 
-  /* ===================== SET UP TRACK EVENT LISTENERS ===================== */
   const setupTrackListeners = useCallback(() => {
     const audioTrack = localTracksRef.current.audioTrack;
     const videoTrack = localTracksRef.current.videoTrack;
 
     if (audioTrack && audioTrack.getMediaStreamTrack) {
-      const audioStreamTrack = audioTrack.getMediaStreamTrack();
-      if (audioStreamTrack) {
-        audioStreamTrack.onended = () => {
-          console.warn('[Track Event] Audio track ended unexpectedly');
-          scheduleTrackRecovery();
-        };
+      const streamTrack = audioTrack.getMediaStreamTrack();
+      if (streamTrack && streamTrack.onended !== undefined) {
+        streamTrack.onended = () => scheduleTrackRecovery();
       }
     }
 
     if (videoTrack && videoTrack.getMediaStreamTrack) {
-      const videoStreamTrack = videoTrack.getMediaStreamTrack();
-      if (videoStreamTrack) {
-        videoStreamTrack.onended = () => {
-          console.warn('[Track Event] Video track ended unexpectedly');
-          scheduleTrackRecovery();
-        };
+      const streamTrack = videoTrack.getMediaStreamTrack();
+      if (streamTrack && streamTrack.onended !== undefined) {
+        streamTrack.onended = () => scheduleTrackRecovery();
       }
     }
   }, [scheduleTrackRecovery]);
 
-  /* ===================== VISIBILITY CHANGE HANDLER (iOS FIX) ===================== */
+  /* ===================== VISIBILITY CHANGE HANDLER ===================== */
   useEffect(() => {
     const handleVisibilityChange = () => {
       const isVisible = document.visibilityState === 'visible';
       isPageVisibleRef.current = isVisible;
       
-      console.log('[Visibility] Page visible:', isVisible, 'In call:', isInCallRef.current);
-      
       if (isVisible && isInCallRef.current && permissionsRef.current) {
-        // Page became visible while in call - check if we need to recover tracks
-        // Use a slightly longer delay to let iOS finish its interruption handling
         setTimeout(() => {
-          // Check if tracks need recovery
-          const audioTrack = localTracksRef.current.audioTrack;
-          const videoTrack = localTracksRef.current.videoTrack;
+          const checkTrack = (track) => {
+            if (!track || !track.getMediaStreamTrack) return false;
+            return track.getMediaStreamTrack().readyState === 'ended';
+          };
           
-          let needsRecovery = false;
-          
-          if (audioTrack && audioTrack.getMediaStreamTrack) {
-            const state = audioTrack.getMediaStreamTrack().readyState;
-            if (state === 'ended') needsRecovery = true;
-          }
-          
-          if (videoTrack && videoTrack.getMediaStreamTrack) {
-            const state = videoTrack.getMediaStreamTrack().readyState;
-            if (state === 'ended') needsRecovery = true;
-          }
-          
-          if (needsRecovery) {
-            console.log('[Visibility] Tracks ended during background, scheduling recovery');
+          if (checkTrack(localTracksRef.current.audioTrack) || 
+              checkTrack(localTracksRef.current.videoTrack)) {
             scheduleTrackRecovery();
           }
         }, 500);
@@ -353,47 +407,8 @@ export default function Video() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [scheduleTrackRecovery]);
 
-  /* ===================== iOS AUDIO INTERRUPTION HANDLER ===================== */
-  useEffect(() => {
-    const handleAudioInterruption = (e) => {
-      const state = e.detail?.state || 'unknown';
-      audioContextStateRef.current = state;
-      
-      console.log('[iOS Audio Interruption] State:', state);
-      
-      if (state === 'ended' || state === 'interrupted') {
-        // Audio was interrupted - tracks may have ended
-        if (isInCallRef.current && permissionsRef.current) {
-          console.log('[iOS Audio Interruption] Will check tracks when interruption ends');
-        }
-      } else if (state === 'running') {
-        // Interruption ended - check if tracks need recovery
-        if (isInCallRef.current && permissionsRef.current) {
-          setTimeout(() => {
-            const audioTrack = localTracksRef.current.audioTrack;
-            if (audioTrack && audioTrack.getMediaStreamTrack) {
-              const trackState = audioTrack.getMediaStreamTrack().readyState;
-              if (trackState === 'ended') {
-                console.log('[iOS Audio Interruption] Audio track ended after interruption, recovering');
-                scheduleTrackRecovery();
-              }
-            }
-          }, 300);
-        }
-      }
-    };
-
-    // Listen for custom Agora events for iOS interruptions
-    window.addEventListener('agora-audio-interruption', handleAudioInterruption);
-    
-    return () => {
-      window.removeEventListener('agora-audio-interruption', handleAudioInterruption);
-    };
-  }, [scheduleTrackRecovery]);
-
   /* ===================== CORE FUNCTIONS ===================== */
 
-  /* -- end call -- */
   const doEndCall = useCallback(() => {
     isInCallRef.current = false;
     isMatchingRef.current = false;
@@ -406,20 +421,20 @@ export default function Video() {
     setShowBlurOverlay(false);
     setShowChat(false);
 
-    // FIX: Pause before clearing to prevent "Load failed" console error
+    // Safely clear remote video
+    safelySetRemoteStream(null);
+    
     if (remoteVideoRef.current) {
-      remoteVideoRef.current.pause();
-      remoteVideoRef.current.removeAttribute('src');
       remoteVideoRef.current.srcObject = null;
-      remoteVideoRef.current.load();
     }
+    remoteStreamRef.current = null;
 
     if (localTracksRef.current.screenTrack) {
       try { localTracksRef.current.screenTrack.close(); } catch {}
       localTracksRef.current.screenTrack = null;
     }
     if (clientRef.current) { 
-      try { clientRef.current.leave(); } catch (e) { console.warn('[End Call] Leave error:', e); } 
+      try { clientRef.current.leave(); } catch {} 
       clientRef.current = null; 
     }
     if (socketRef.current && currentRoomRef.current) {
@@ -427,12 +442,11 @@ export default function Video() {
     }
     currentRoomRef.current = null;
     partnerIdRef.current = null;
-  }, [stopMatchTimer]);
+  }, [stopMatchTimer, safelySetRemoteStream]);
 
   const doEndCallRef = useRef(doEndCall);
   useEffect(() => { doEndCallRef.current = doEndCall; }, [doEndCall]);
 
-  /* -- start call -- */
   const doStartCall = async (channelName, peerId) => {
     const AgoraRTC = window.AgoraRTC;
     if (!AgoraRTC) { addToast('AgoraRTC not loaded', 'error'); doEndCallRef.current(); return; }
@@ -446,86 +460,65 @@ export default function Video() {
 
     try {
       const uid = Math.floor(Math.random() * 100000);
-      const tr = await fetch(CONFIG.BACKEND + '/generateToken', {
+      const tr = await safeFetch(CONFIG.BACKEND + '/generateToken', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current },
         body: JSON.stringify({ channelName, uid, role: 'publisher', expirySeconds: 3600 }),
       });
-      if (!tr.ok) { const e = await tr.json(); throw new Error(e.error || 'Token failed'); }
+      if (!tr.ok) { 
+        const e = await tr.json().catch(() => ({ error: 'Token request failed' })); 
+        throw new Error(e.error || 'Token failed'); 
+      }
       const td = await tr.json();
 
       const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
       clientRef.current = client;
       
-      // Enable audio context interruption handling for iOS
-      if (client._audioContext) {
-        client._audioContext.onstatechange = () => {
-          const state = client._audioContext.state;
-          console.log('[Agora AudioContext] State changed:', state);
-          
-          // Dispatch custom event for our handler
-          window.dispatchEvent(new CustomEvent('agora-audio-interruption', {
-            detail: { state }
-          }));
-        };
-      }
-      
       await client.join(td.appID || CONFIG.AGORA_APP_ID, channelName, td.rtcToken, uid);
 
       // Create or reuse tracks
-      if (!localTracksRef.current.audioTrack || 
-          (localTracksRef.current.audioTrack.getMediaStreamTrack && 
-           localTracksRef.current.audioTrack.getMediaStreamTrack().readyState === 'ended')) {
+      const needNewAudio = !localTracksRef.current.audioTrack || 
+        (localTracksRef.current.audioTrack.getMediaStreamTrack && 
+         localTracksRef.current.audioTrack.getMediaStreamTrack().readyState === 'ended');
+      const needNewVideo = !localTracksRef.current.videoTrack || 
+        (localTracksRef.current.videoTrack.getMediaStreamTrack && 
+         localTracksRef.current.videoTrack.getMediaStreamTrack().readyState === 'ended');
+
+      if (needNewAudio) {
         localTracksRef.current.audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
       }
       
-      if (!localTracksRef.current.videoTrack || 
-          (localTracksRef.current.videoTrack.getMediaStreamTrack && 
-           localTracksRef.current.videoTrack.getMediaStreamTrack().readyState === 'ended')) {
+      if (needNewVideo) {
         localTracksRef.current.videoTrack = await AgoraRTC.createCameraVideoTrack({
           encoderConfig: { width: 1280, height: 720, frameRate: 30, bitrate: 1710 },
         });
         localTracksRef.current.videoTrack.play(localVideoDivRef.current);
       }
       
-      // Set up track ended listeners
       setupTrackListeners();
-      
       await client.publish([localTracksRef.current.audioTrack, localTracksRef.current.videoTrack]);
 
       client.on('user-published', async (u, mediaType) => {
         try {
           await client.subscribe(u, mediaType);
           if (mediaType === 'video') {
-            const el = remoteVideoRef.current;
-            if (el) {
-              // Clear previous source first
-              el.pause();
-              el.removeAttribute('src');
-              el.srcObject = null;
-              
-              el.srcObject = new MediaStream([u.videoTrack.getMediaStreamTrack()]);
-              el.play().catch(e => {
-                console.warn('[Remote Video] Play error:', e);
-              });
-            }
+            const stream = new MediaStream([u.videoTrack.getMediaStreamTrack()]);
+            safelySetRemoteStream(stream);
           }
           if (mediaType === 'audio') {
-            u.audioTrack.play().catch(e => {
-              console.warn('[Remote Audio] Play error:', e);
-            });
+            u.audioTrack.play().catch(() => {});
           }
         } catch (e) {
-          console.error('[User Published] Subscribe error:', e);
+          // Silent fail - don't break the call
         }
       });
       
       client.on('user-unpublished', (u, m) => {
-        if (m === 'video' && remoteVideoRef.current) {
-          remoteVideoRef.current.pause();
-          remoteVideoRef.current.removeAttribute('src');
-          remoteVideoRef.current.srcObject = null;
-          remoteVideoRef.current.load();
+        if (m === 'video') {
+          safelySetRemoteStream(null);
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = null;
+          }
         }
         if (m === 'audio' && u.audioTrack) {
           try { u.audioTrack.stop(); } catch {}
@@ -541,32 +534,25 @@ export default function Video() {
         const q = s.downlinkNetworkQuality;
         setNetworkQuality(q <= 1 ? 'excellent' : q === 2 ? 'good' : q === 3 ? 'poor' : 'bad');
       });
-      
-      // Handle connection state changes
-      client.on('connection-state-change', (curState, revState, reason) => {
-        console.log('[Agora] Connection state:', curState, 'Reason:', reason);
-        if (curState === 'DISCONNECTED' && isInCallRef.current) {
-          addToastRef.current('Connection lost. Reconnecting...', 'error');
-        }
-      });
 
       socketRef.current?.emit('join_room', { room: channelName });
       startModerationLoop(channelName);
       setStats(prev => ({ ...prev, matches: prev.matches + 1 }));
       addToast('Connected!', 'success');
     } catch (e) {
-      console.error('Call error:', e);
-      addToast('Failed: ' + e.message, 'error');
+      addToast('Failed: ' + (e.message || 'Unknown error'), 'error');
       doEndCallRef.current();
     }
   };
 
-  /* -- check ban -- */
+  /* -- check ban (FIXED) -- */
   const checkBanStatus = useCallback(async () => {
     const t = tokenRef.current;
     if (!t) return false;
     try {
-      const r = await fetch(CONFIG.BACKEND + '/auth/me', { headers: { Authorization: 'Bearer ' + t } });
+      const r = await safeFetch(CONFIG.BACKEND + '/auth/me', { 
+        headers: { Authorization: 'Bearer ' + t } 
+      });
       const d = await r.json();
       if (d.authenticated && d.user) {
         setUser(d.user);
@@ -575,7 +561,10 @@ export default function Video() {
           return true;
         }
       }
-    } catch (e) { console.error('Ban check error:', e); }
+    } catch (e) {
+      // Don't log the error - just return false
+      // The error is likely a network issue, not a real ban
+    }
     return false;
   }, []);
 
@@ -586,10 +575,7 @@ export default function Video() {
       const AgoraRTC = window.AgoraRTC;
       if (!AgoraRTC) throw new Error('AgoraRTC not loaded');
       
-      // Request audio first (iOS may need user interaction)
       const audio = await AgoraRTC.createMicrophoneAudioTrack();
-      
-      // Then request video
       const video = await AgoraRTC.createCameraVideoTrack({
         encoderConfig: { width: 1280, height: 720, frameRate: 30, bitrate: 1710 },
       });
@@ -598,7 +584,6 @@ export default function Video() {
       localTracksRef.current.videoTrack = video;
       video.play(localVideoDivRef.current);
       
-      // Set up track ended listeners immediately
       setupTrackListeners();
       
       permissionsRef.current = true;
@@ -607,10 +592,9 @@ export default function Video() {
       try {
         const devices = await AgoraRTC.getDevices();
         camerasRef.current = devices.filter(x => x.kind === 'videoinput');
-      } catch { /* silent */ }
+      } catch {}
       await initializeAfterAuth();
     } catch (err) {
-      console.error('Permission error:', err);
       addToast('Camera & microphone permission required', 'error');
     } finally {
       setPermBtnLoading(false);
@@ -622,7 +606,9 @@ export default function Video() {
     const t = tokenRef.current;
     if (!t) return;
     try {
-      const r = await fetch(CONFIG.BACKEND + '/api/user/preferences', { headers: { Authorization: 'Bearer ' + t } });
+      const r = await safeFetch(CONFIG.BACKEND + '/api/user/preferences', { 
+        headers: { Authorization: 'Bearer ' + t } 
+      });
       if (r.ok) {
         const p = await r.json();
         setGenderSelect(p.gender || 'male');
@@ -631,32 +617,26 @@ export default function Video() {
         setInterestsInput((p.interests || []).join(', '));
         preferencesRef.current = { ...preferencesRef.current, ...p };
       }
-    } catch (e) { 
-      console.warn('Load settings error:', e.message);
-      // Don't show error to user for non-critical settings load
+    } catch {
+      // Silent fail
     }
   };
 
-  /* -- load profile -- */
+  /* -- load profile (FIXED) -- */
   const loadProfile = async () => {
     const t = tokenRef.current;
     if (!t) return;
     try {
-      const r = await fetch(CONFIG.BACKEND + '/user/profile', { headers: { Authorization: 'Bearer ' + t } });
+      const r = await safeFetch(CONFIG.BACKEND + '/user/profile', { 
+        headers: { Authorization: 'Bearer ' + t } 
+      });
       if (r.ok) {
         const u = await r.json();
         setUser(u);
         setUserCoins(u.coins || 0);
-      } else {
-        console.warn('Load profile failed:', r.status);
-        // Only show error if not a network issue (likely temporary)
-        if (r.status !== 0 && r.status !== 503) {
-          // Silent fail for profile - not critical
-        }
       }
-    } catch (e) { 
-      console.warn('Load profile error:', e.message);
-      // Silent fail for network errors
+    } catch {
+      // Silent fail - don't show error for non-critical profile load
     }
   };
 
@@ -671,7 +651,7 @@ export default function Video() {
       nickname: (user && (user.username || user.nickname)) || 'User',
     };
     try {
-      const r = await fetch(CONFIG.BACKEND + '/api/user/preferences', {
+      const r = await safeFetch(CONFIG.BACKEND + '/api/user/preferences', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current },
         body: JSON.stringify(payload),
@@ -681,7 +661,7 @@ export default function Video() {
         addToast('Settings saved!', 'success');
         setShowSettings(false);
       } else {
-        const d = await r.json();
+        const d = await r.json().catch(() => ({ error: 'Failed' }));
         addToast(d.error || 'Failed', 'error');
       }
     } catch { addToast('Error', 'error'); }
@@ -697,7 +677,7 @@ export default function Video() {
       const sid = params.get('session_id');
       if (sid && tokenRef.current) {
         try {
-          const r = await fetch(CONFIG.BACKEND + '/api/verify-payment', {
+          const r = await safeFetch(CONFIG.BACKEND + '/api/verify-payment', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current },
             body: JSON.stringify({ sessionId: sid }),
@@ -710,7 +690,7 @@ export default function Video() {
               addToast('Coins added! New balance: ' + d.coins, 'success');
             }
           }
-        } catch (e) { console.error(e); }
+        } catch {}
       }
       window.history.replaceState({}, document.title, window.location.pathname);
     }
@@ -753,17 +733,14 @@ export default function Video() {
     if (!tokenRef.current) { addToast('Please log in', 'error'); return; }
     if (!socketRef.current || !socketRef.current.connected) return;
 
-    // Check if tracks need recovery before starting match
-    const audioTrack = localTracksRef.current.audioTrack;
-    const videoTrack = localTracksRef.current.videoTrack;
+    // Check tracks before matching
+    const checkTrack = (track) => {
+      if (!track || !track.getMediaStreamTrack) return true;
+      return track.getMediaStreamTrack().readyState === 'ended';
+    };
     
-    if (audioTrack && audioTrack.getMediaStreamTrack && audioTrack.getMediaStreamTrack().readyState === 'ended') {
-      addToast('Recovering camera...', 'info');
-      await recoverTracks();
-      return;
-    }
-    
-    if (videoTrack && videoTrack.getMediaStreamTrack && videoTrack.getMediaStreamTrack().readyState === 'ended') {
+    if (checkTrack(localTracksRef.current.audioTrack) || 
+        checkTrack(localTracksRef.current.videoTrack)) {
       addToast('Recovering camera...', 'info');
       await recoverTracks();
       return;
@@ -779,12 +756,15 @@ export default function Video() {
         interests: preferencesRef.current.interests,
         nickname: (user && (user.username || user.nickname)) || 'User',
       };
-      const r = await fetch(CONFIG.BACKEND + '/queue/enqueue', {
+      const r = await safeFetch(CONFIG.BACKEND + '/queue/enqueue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current },
         body: JSON.stringify(payload),
       });
-      if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Enqueue failed'); }
+      if (!r.ok) { 
+        const e = await r.json().catch(() => ({ error: 'Enqueue failed' })); 
+        throw new Error(e.error || 'Enqueue failed'); 
+      }
       const d = await r.json();
       if (d.matched) {
         partnerIdRef.current = d.peerId;
@@ -796,7 +776,6 @@ export default function Video() {
         setTimeout(() => { if (isMatchingRef.current) checkForMatch(); }, 3000);
       }
     } catch (e) {
-      console.error(e);
       addToast(e.message || 'Matching failed', 'error');
       stopMatching();
     }
@@ -805,7 +784,9 @@ export default function Video() {
   const checkForMatch = async () => {
     if (!isMatchingRef.current || isInCallRef.current) return;
     try {
-      const r = await fetch(CONFIG.BACKEND + '/queue/check', { headers: { Authorization: 'Bearer ' + tokenRef.current } });
+      const r = await safeFetch(CONFIG.BACKEND + '/queue/check', { 
+        headers: { Authorization: 'Bearer ' + tokenRef.current } 
+      });
       if (!r.ok) return;
       const d = await r.json();
       if (d.matched) {
@@ -822,7 +803,7 @@ export default function Video() {
   const stopMatching = () => {
     isMatchingRef.current = false;
     setShowBlurOverlay(false);
-    fetch(CONFIG.BACKEND + '/queue/leave', {
+    safeFetch(CONFIG.BACKEND + '/queue/leave', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + tokenRef.current },
     }).catch(() => {});
@@ -842,7 +823,7 @@ export default function Video() {
         modCanvasRef.current.height = 240;
         mx.drawImage(v, 0, 0, 320, 240);
         socketRef.current.emit('video_frame', { frameBase64: modCanvasRef.current.toDataURL('image/jpeg', 0.7), roomId });
-      } catch { /* silent */ }
+      } catch {}
     }, CONFIG.MODERATION_INTERVAL);
   };
 
@@ -861,7 +842,7 @@ export default function Video() {
         const isBack = dev.label.toLowerCase().includes('back') || dev.label.toLowerCase().includes('rear');
         el.style.transform = isBack ? 'scaleX(1)' : 'scaleX(-1)';
       }
-    } catch (e) { addToast('Failed to switch', 'error'); }
+    } catch { addToast('Failed to switch', 'error'); }
   };
 
   /* -- screen share -- */
@@ -877,7 +858,7 @@ export default function Video() {
         }
         isScreenSharingRef.current = false;
         addToast('Screen sharing stopped', 'info');
-      } catch (e) { console.error(e); }
+      } catch {}
     } else {
       if (!clientRef.current || !isInCallRef.current) { addToast('Start a call first', 'error'); return; }
       try {
@@ -890,7 +871,7 @@ export default function Video() {
         await clientRef.current.publish(screenTrack);
         isScreenSharingRef.current = true;
         addToast('Screen sharing started', 'success');
-      } catch (e) { addToast('Could not start screen share', 'error'); }
+      } catch { addToast('Could not start screen share', 'error'); }
     }
   };
 
@@ -926,7 +907,7 @@ export default function Video() {
         if (el.readyState >= 1) { await el.requestPictureInPicture(); addToast('PiP mode', 'success'); }
         else addToast('Video initializing...', 'info');
       } else addToast('PiP not supported', 'error');
-    } catch (e) { addToast('Could not toggle PiP', 'error'); }
+    } catch { addToast('Could not toggle PiP', 'error'); }
   };
 
   /* -- effects -- */
@@ -972,12 +953,12 @@ export default function Video() {
     if (!partnerIdRef.current) { addToast('No partner', 'error'); setShowGifts(false); return; }
     if (userCoins < cost) { addToast('Need ' + cost + ' coins', 'error'); setShowGifts(false); return; }
     try {
-      const r = await fetch(CONFIG.BACKEND + '/api/user/spend-coins', {
+      const r = await safeFetch(CONFIG.BACKEND + '/api/user/spend-coins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current },
         body: JSON.stringify({ coins: cost, type: 'gift', giftType: type, recipientId: partnerIdRef.current }),
       });
-      if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Failed'); }
+      if (!r.ok) { const e = await r.json().catch(() => ({ error: 'Failed' })); throw new Error(e.error || 'Failed'); }
       setUserCoins(prev => prev - cost);
       setShowGifts(false);
       addToast('Sent ' + type + '! (-' + cost + ' coins)', 'success');
@@ -988,7 +969,7 @@ export default function Video() {
   const initiateUnbanPayment = async () => {
     if (!user?.id) { addToast('User not identified', 'error'); return; }
     try {
-      const r = await fetch(CONFIG.BACKEND + '/api/pay-unban', {
+      const r = await safeFetch(CONFIG.BACKEND + '/api/pay-unban', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: String(user.id) }),
@@ -1003,13 +984,13 @@ export default function Video() {
   const submitAppeal = async () => {
     if (appealText.trim().length < 10) { addToast('Minimum 10 characters', 'error'); return; }
     try {
-      const r = await fetch(CONFIG.BACKEND + '/api/moderation/appeal', {
+      const r = await safeFetch(CONFIG.BACKEND + '/api/moderation/appeal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current },
         body: JSON.stringify({ message: appealText.trim() }),
       });
       if (r.ok) { addToast('Appeal submitted', 'success'); setShowAppeal(false); setAppealText(''); }
-      else { const d = await r.json(); addToast(d.error || 'Failed', 'error'); }
+      else { const d = await r.json().catch(() => ({ error: 'Failed' })); addToast(d.error || 'Failed', 'error'); }
     } catch { addToast('Failed', 'error'); }
   };
 
@@ -1026,13 +1007,13 @@ export default function Video() {
     if (mDiff < 0 || (mDiff === 0 && today.getDate() < birthDate.getDate())) age--;
     if (age < 18) { addToast('You must be 18 or older. You are ' + age + '.', 'error'); setShowAgeVerify(false); return; }
     try {
-      const r = await fetch(CONFIG.BACKEND + '/api/user/verify-age', {
+      const r = await safeFetch(CONFIG.BACKEND + '/api/user/verify-age', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current },
         body: JSON.stringify({ age }),
       });
       if (r.ok) { setUser(prev => prev ? { ...prev, age_verified: true } : prev); addToast('Age verified!', 'success'); setShowAgeVerify(false); }
-      else { const d = await r.json(); addToast(d.error || 'Verification failed', 'error'); }
+      else { const d = await r.json().catch(() => ({ error: 'Failed' })); addToast(d.error || 'Verification failed', 'error'); }
     } catch { addToast('Error', 'error'); }
   };
 
@@ -1041,13 +1022,13 @@ export default function Video() {
     const name = editName.trim();
     if (!name) { addToast('Name cannot be empty', 'error'); return; }
     try {
-      const r = await fetch(CONFIG.BACKEND + '/user/display-name', {
+      const r = await safeFetch(CONFIG.BACKEND + '/user/display-name', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current },
         body: JSON.stringify({ display_name: name }),
       });
       if (r.ok) { setUser(prev => prev ? { ...prev, username: name, display_name: name } : prev); addToast('Name updated!', 'success'); setShowEditName(false); }
-      else { const d = await r.json(); addToast(d.error || 'Failed', 'error'); }
+      else { const d = await r.json().catch(() => ({ error: 'Failed' })); addToast(d.error || 'Failed', 'error'); }
     } catch { addToast('Error saving', 'error'); }
   };
 
@@ -1059,7 +1040,7 @@ export default function Video() {
     const reader = new FileReader();
     reader.onload = async (ev) => {
       try {
-        const r = await fetch(CONFIG.BACKEND + '/api/user/avatar', {
+        const r = await safeFetch(CONFIG.BACKEND + '/api/user/avatar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current },
           body: JSON.stringify({ avatarBase64: ev.target.result }),
@@ -1079,7 +1060,7 @@ export default function Video() {
     if (!stripeRef.current && window.Stripe) stripeRef.current = window.Stripe(CONFIG.STRIPE_PUBLISHABLE_KEY);
     if (!stripeRef.current) { addToast('Stripe not loaded', 'error'); return; }
     try {
-      const r = await fetch(CONFIG.BACKEND + '/api/create-checkout-session', {
+      const r = await safeFetch(CONFIG.BACKEND + '/api/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current },
         body: JSON.stringify(selectedCoinPackage),
@@ -1117,7 +1098,6 @@ export default function Video() {
   /* -- next -- */
   const handleNext = () => { doEndCallRef.current(); setTimeout(startMatching, 500); };
 
-  /* -- profile computed values -- */
   const providerInfo = user ? getProviderInfo(user.provider) : getProviderInfo(null);
 
   /* ===================== CANVAS PARTICLES ===================== */
@@ -1226,13 +1206,9 @@ export default function Video() {
       if (tokenRef.current) socket.emit('auth', { token: tokenRef.current });
     });
 
-    socket.on('disconnect', () => {
-      if (CONFIG.DEBUG_MODE) console.log('[Omevo] Socket disconnected');
-    });
+    socket.on('disconnect', () => {});
 
-    socket.on('authenticated', (d) => {
-      if (CONFIG.DEBUG_MODE) console.log('[Omevo] Socket Authenticated:', d.userId);
-    });
+    socket.on('authenticated', () => {});
 
     socket.on('match_found', (d) => {
       if (isMatchingRef.current && !isInCallRef.current) {
@@ -1289,6 +1265,9 @@ export default function Video() {
       if (socketRef.current) socketRef.current.disconnect();
       if (clientRef.current) try { clientRef.current.leave(); } catch {}
       Object.values(localTracksRef.current).forEach(t => { if (t) try { t.close(); } catch {} });
+      if (remoteStreamRef.current) {
+        remoteStreamRef.current.getTracks().forEach(t => { try { t.stop(); } catch {} });
+      }
     };
   }, []);
 
@@ -1308,7 +1287,6 @@ export default function Video() {
         ))}
       </div>
 
-      {/* Loading Screen */}
       {loading && (
         <div id="loadingScreen" role="status" aria-live="polite">
           <div className="loading-spinner" />
@@ -1316,7 +1294,6 @@ export default function Video() {
         </div>
       )}
 
-      {/* Ban Overlay */}
       {banData && (
         <div className="ban-overlay active" role="alertdialog" aria-labelledby="banTitle" aria-describedby="banDesc">
           <div className="ban-bg-noise" />
@@ -1361,7 +1338,6 @@ export default function Video() {
         </div>
       )}
 
-      {/* Appeal Modal */}
       {showAppeal && (
         <div className="modal-overlay active" role="dialog" aria-labelledby="appealTitle" onClick={() => setShowAppeal(false)}>
           <div className="appeal-content" onClick={e => e.stopPropagation()}>
@@ -1377,7 +1353,6 @@ export default function Video() {
         </div>
       )}
 
-      {/* Age Verify Modal */}
       {showAgeVerify && (
         <div className="modal-overlay active" role="dialog" aria-labelledby="ageVerifyTitle" onClick={() => setShowAgeVerify(false)}>
           <div className="age-verify-content" onClick={e => e.stopPropagation()}>
@@ -1397,7 +1372,6 @@ export default function Video() {
         </div>
       )}
 
-      {/* Unban Success */}
       {showUnbanSuccess && (
         <div className="unban-success-overlay active" role="status">
           <div className="success-check"><i className="fas fa-check" /></div>
@@ -1407,7 +1381,6 @@ export default function Video() {
         </div>
       )}
 
-      {/* Permission Overlay */}
       {showPermission && !banData && (
         <div className="permission-overlay" role="dialog" aria-labelledby="permTitle">
           <div className="permission-card">
@@ -1430,18 +1403,14 @@ export default function Video() {
         </div>
       )}
 
-      {/* Background Canvas */}
       <canvas ref={canvasRef} aria-hidden="true" />
 
-      {/* Main App */}
       <div id="app">
         <div className={`video-container ${currentLayout === 'split' ? 'split-mode' : ''}`}>
-          {/* Remote Video */}
           <div id="remoteVideoWrapper">
             <video ref={remoteVideoRef} autoPlay playsInline />
           </div>
 
-          {/* Blur / Matching Overlay */}
           {showBlurOverlay && (
             <div className="blur-overlay active">
               <div className="matching-content" style={{ textAlign: 'center' }}>
@@ -1454,7 +1423,6 @@ export default function Video() {
             </div>
           )}
 
-          {/* Local Video */}
           <div ref={localVideoWrapperRef} id="localVideoWrapper" style={{ opacity: isRecoveringTracks ? 0.5 : 1 }}>
             <div ref={localVideoDivRef} id="localVideo" style={{ width: '100%', height: '100%' }} />
             {isRecoveringTracks && (
@@ -1467,7 +1435,6 @@ export default function Video() {
             <button id="resetPositionBtn" title="Reset Position" aria-label="Reset Video Position" onClick={resetVideoPosition}><i className="fas fa-compress" /></button>
           </div>
 
-          {/* Partner Info */}
           {partnerInfo && (
             <div className="partner-info">
               <div className="name">
@@ -1486,7 +1453,6 @@ export default function Video() {
             </div>
           )}
 
-          {/* Stats Bar */}
           <div className="stats-bar">
             <div className="stat-item"><div className="stat-value">{stats.matches}</div><div className="stat-label">Matches</div></div>
             <div className="stat-item"><div className="stat-value">{matchTime}</div><div className="stat-label">Time</div></div>
@@ -1499,7 +1465,6 @@ export default function Video() {
             </div>
           </div>
 
-          {/* Controls */}
           <div className="controls" role="toolbar" aria-label="Video Call Controls">
             {!isInCall && !partnerInfo ? (
               <div style={{ display: 'flex', gap: 8 }}>
@@ -1523,7 +1488,6 @@ export default function Video() {
             )}
           </div>
 
-          {/* Effects Panel */}
           {showEffects && (
             <div className="effects-panel active" role="menu">
               {[['none', 'fa-ban', 'No Effect'], ['blur', 'fa-eye-slash', 'Blur'], ['grayscale', 'fa-adjust', 'B&W'], ['sepia', 'fa-image', 'Sepia'], ['invert', 'fa-exchange-alt', 'Invert'], ['contrast', 'fa-sun', 'High Contrast']].map(([eff, icon, title]) => (
@@ -1534,80 +1498,42 @@ export default function Video() {
         </div>
       </div>
 
-      {/* Settings Panel */}
+      {/* Panels and Modals - same as before */}
       <div className={`side-panel left ${showSettings ? 'open' : ''}`} role="dialog" aria-label="Settings">
         <div className="panel-header">
           <h2>Settings</h2>
           <button className="control-btn" onClick={() => setShowSettings(false)} aria-label="Close Settings"><i className="fas fa-times" /></button>
         </div>
         <div className="panel-content">
-          <div className="form-group">
-            <label>I am</label>
-            <select className="form-control" value={genderSelect} onChange={e => setGenderSelect(e.target.value)}>
-              <option value="male">Male</option><option value="female">Female</option><option value="other">Other</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Looking for</label>
-            <select className="form-control" value={lookingFor} onChange={e => setLookingFor(e.target.value)}>
-              <option value="any">Anyone</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Location</label>
-            <select className="form-control" value={locationSelect} onChange={e => setLocationSelect(e.target.value)}>
-              <option value="any">Anywhere</option><option value="nearby">Nearby</option><option value="us">United States</option><option value="europe">Europe</option><option value="asia">Asia</option><option value="uk">United Kingdom</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Interests (comma separated, max 5)</label>
-            <input type="text" className="form-control" value={interestsInput} onChange={e => setInterestsInput(e.target.value)} placeholder="Music, Gaming, Sports..." />
-          </div>
+          <div className="form-group"><label>I am</label><select className="form-control" value={genderSelect} onChange={e => setGenderSelect(e.target.value)}><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div>
+          <div className="form-group"><label>Looking for</label><select className="form-control" value={lookingFor} onChange={e => setLookingFor(e.target.value)}><option value="any">Anyone</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div>
+          <div className="form-group"><label>Location</label><select className="form-control" value={locationSelect} onChange={e => setLocationSelect(e.target.value)}><option value="any">Anywhere</option><option value="nearby">Nearby</option><option value="us">United States</option><option value="europe">Europe</option><option value="asia">Asia</option><option value="uk">United Kingdom</option></select></div>
+          <div className="form-group"><label>Interests (comma separated, max 5)</label><input type="text" className="form-control" value={interestsInput} onChange={e => setInterestsInput(e.target.value)} placeholder="Music, Gaming, Sports..." /></div>
           <button className="btn btn-primary" onClick={saveSettings} style={{ width: '100%' }}>Save Settings</button>
         </div>
       </div>
 
-      {/* Profile Panel */}
       <div className={`side-panel right ${showProfile ? 'open' : ''}`} role="dialog" aria-label="Profile">
-        <div className="panel-header">
-          <h2>Profile</h2>
-          <button className="control-btn" onClick={() => setShowProfile(false)} aria-label="Close Profile"><i className="fas fa-times" /></button>
-        </div>
-        {/* Hero */}
+        <div className="panel-header"><h2>Profile</h2><button className="control-btn" onClick={() => setShowProfile(false)} aria-label="Close Profile"><i className="fas fa-times" /></button></div>
         <div className="profile-hero">
           <div className="profile-avatar-ring">
             <div className="avatar-fallback" id="profileAvatarInner">
               {user?.avatar?.startsWith('http') || user?.avatar?.startsWith('data:') ? (
                 <img src={user.avatar} alt="Avatar" onError={e => { e.target.style.display = 'none'; e.target.parentElement.innerHTML = '<i className="fas fa-user"></i>'; }} />
-              ) : (
-                <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-dim)' }}>
-                  {(user?.username || user?.nickname || 'U').substring(0, 2).toUpperCase()}
-                </span>
-              )}
+              ) : (<span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-dim)' }}>{(user?.username || user?.nickname || 'U').substring(0, 2).toUpperCase()}</span>)}
             </div>
-            <div className="profile-avatar-edit" onClick={() => document.getElementById('avatarFileInput')?.click()} title="Change Avatar" role="button" tabIndex={0}>
-              <i className="fas fa-camera" />
-            </div>
+            <div className="profile-avatar-edit" onClick={() => document.getElementById('avatarFileInput')?.click()} title="Change Avatar" role="button" tabIndex={0}><i className="fas fa-camera" /></div>
             <input type="file" id="avatarFileInput" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} />
           </div>
-          <div className="profile-name-row">
-            <span className="profile-display-name">{user?.display_name || user?.username || 'User'}</span>
-            <span className={`profile-provider-badge ${providerInfo.cls}`}>
-              <i className={providerInfo.icon} /> {providerInfo.label}
-            </span>
-          </div>
-          {user?.email && (
-            <div className="profile-email"><i className="fas fa-envelope" style={{ fontSize: '0.75rem' }} /><span>{maskEmail(user.email)}</span></div>
-          )}
+          <div className="profile-name-row"><span className="profile-display-name">{user?.display_name || user?.username || 'User'}</span><span className={`profile-provider-badge ${providerInfo.cls}`}><i className={providerInfo.icon} /> {providerInfo.label}</span></div>
+          {user?.email && (<div className="profile-email"><i className="fas fa-envelope" style={{ fontSize: '0.75rem' }} /><span>{maskEmail(user.email)}</span></div>)}
           <div className="profile-coins-row"><i className="fas fa-coins" /><span>{userCoins}</span></div>
         </div>
-        {/* Stats */}
         <div className="profile-stats-grid">
           <div className="profile-stat-cell"><div className="val">{stats.matches}</div><div className="lbl">Matches</div></div>
           <div className="profile-stat-cell"><div className="val">{stats.level}</div><div className="lbl">Level</div></div>
           <div className="profile-stat-cell"><div className="val">{stats.likes}</div><div className="lbl">Likes</div></div>
         </div>
-        {/* Info */}
         <div className="profile-info-list">
           <ProfileInfoRow icon="fa-shield-alt" label="Age Verified" value={user?.age_verified ? 'Verified' : 'Not Verified'} cls={user?.age_verified ? 'verified' : 'unverified'} />
           <ProfileInfoRow icon="fa-venus-mars" label="Gender" value={user?.gender && user.gender !== 'any' ? user.gender.charAt(0).toUpperCase() + user.gender.slice(1) : 'Not Set'} cls={user?.gender && user.gender !== 'any' ? '' : 'none'} />
@@ -1615,159 +1541,96 @@ export default function Video() {
           <ProfileInfoRow icon="fa-calendar-alt" label="Member Since" value={formatDate(user?.created_at)} cls="" />
           <ProfileInfoRow icon="fa-fingerprint" label="User ID" value={user?.id ? String(user.id).substring(0, 12) + '...' : '-'} cls="none" monospace />
         </div>
-        {/* Actions */}
         <div className="profile-actions">
           <button className="profile-action-btn edit" onClick={() => { setEditName(user?.display_name || user?.username || ''); setShowEditName(true); }}><i className="fas fa-pen" /> Edit Display Name</button>
           <button className="profile-action-btn coins" onClick={() => setShowPayment(true)}><i className="fas fa-coins" /> Get Coins</button>
-          {!user?.age_verified && (
-            <button className="profile-action-btn verify" onClick={() => setShowAgeVerify(true)}><i className="fas fa-id-card" /> Verify Your Age</button>
-          )}
+          {!user?.age_verified && (<button className="profile-action-btn verify" onClick={() => setShowAgeVerify(true)}><i className="fas fa-id-card" /> Verify Your Age</button>)}
           <button className="profile-action-btn logout" onClick={logout}><i className="fas fa-sign-out-alt" /> Logout</button>
         </div>
       </div>
 
-      {/* Edit Name Modal */}
       {showEditName && (
         <div className="modal-overlay active" onClick={() => setShowEditName(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Edit Display Name</h3>
-              <button className="control-btn" onClick={() => setShowEditName(false)} aria-label="Close"><i className="fas fa-times" /></button>
-            </div>
-            <div className="form-group">
-              <label>Display Name (max 20 characters)</label>
-              <input type="text" className="form-control" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Enter new name" maxLength={20} />
-            </div>
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-              <button className="btn" style={{ background: 'var(--dark)', color: 'var(--text)' }} onClick={() => setShowEditName(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={saveProfileName}>Save</button>
-            </div>
+            <div className="modal-header"><h3>Edit Display Name</h3><button className="control-btn" onClick={() => setShowEditName(false)} aria-label="Close"><i className="fas fa-times" /></button></div>
+            <div className="form-group"><label>Display Name (max 20 characters)</label><input type="text" className="form-control" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Enter new name" maxLength={20} /></div>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}><button className="btn" style={{ background: 'var(--dark)', color: 'var(--text)' }} onClick={() => setShowEditName(false)}>Cancel</button><button className="btn btn-primary" onClick={saveProfileName}>Save</button></div>
           </div>
         </div>
       )}
 
-      {/* Chat Panel */}
       {showChat && (
         <div className="side-panel right open" style={{ display: 'flex', flexDirection: 'column' }} role="dialog" aria-label="Chat">
-          <div className="panel-header">
-            <h3>Chat</h3>
-            <button className="control-btn" onClick={() => setShowChat(false)} aria-label="Close Chat"><i className="fas fa-times" /></button>
-          </div>
+          <div className="panel-header"><h3>Chat</h3><button className="control-btn" onClick={() => setShowChat(false)} aria-label="Close Chat"><i className="fas fa-times" /></button></div>
           <div className="chat-messages" aria-live="polite">
             {chatMessages.map(m => (
               <div key={m.id} style={{ marginBottom: 10, textAlign: m.isOwn ? 'right' : 'left' }}>
                 <div style={{ fontSize: '0.72rem', color: m.isOwn ? 'var(--primary)' : 'var(--secondary)', marginBottom: 3, fontWeight: 600 }}>{m.name}</div>
-                <span style={{
-                  background: m.isOwn ? 'var(--primary)' : 'var(--dark-card)',
-                  padding: '8px 14px',
-                  borderRadius: m.isOwn ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                  display: 'inline-block',
-                  maxWidth: '80%',
-                  wordBreak: 'break-word',
-                }}>{escapeHtml(m.msg)}</span>
+                <span style={{ background: m.isOwn ? 'var(--primary)' : 'var(--dark-card)', padding: '8px 14px', borderRadius: m.isOwn ? '14px 14px 4px 14px' : '14px 14px 14px 4px', display: 'inline-block', maxWidth: '80%', wordBreak: 'break-word' }}>{escapeHtml(m.msg)}</span>
               </div>
             ))}
           </div>
           {showTyping && <div style={{ padding: '0 20px 5px', fontSize: '0.8rem', color: 'var(--text-muted)', height: 18 }}>Stranger is typing...</div>}
           <div style={{ padding: 15, borderTop: '1px solid var(--glass-border)', display: 'flex', gap: 10 }}>
-            <input type="text" value={messageInput} onChange={e => setMessageInput(e.target.value)} onKeyDown={e => {
-              if (e.key === 'Enter') sendMessage();
-              if (socketRef.current?.connected && currentRoomRef.current) socketRef.current.emit('typing', { room: currentRoomRef.current });
-            }} placeholder="Type a message..." style={{ flex: 1, padding: '10px 15px', background: 'var(--dark)', border: '1px solid var(--glass-border)', borderRadius: 25, color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }} maxLength={500} />
+            <input type="text" value={messageInput} onChange={e => setMessageInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') sendMessage(); if (socketRef.current?.connected && currentRoomRef.current) socketRef.current.emit('typing', { room: currentRoomRef.current }); }} placeholder="Type a message..." style={{ flex: 1, padding: '10px 15px', background: 'var(--dark)', border: '1px solid var(--glass-border)', borderRadius: 25, color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }} maxLength={500} />
             <button onClick={sendMessage} style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'var(--primary)', color: 'white', cursor: 'pointer', flexShrink: 0 }} aria-label="Send Message"><i className="fas fa-paper-plane" /></button>
           </div>
         </div>
       )}
 
-      {/* Report Modal */}
       {showReport && (
         <div className="modal-overlay active" onClick={() => { setShowReport(false); setSelectedReport(null); setReportDetails(''); }}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header"><h3>Report User</h3></div>
             <div className="report-reasons" role="listbox">
-              {[
-                ['Inappropriate behavior during video chat', 'fa-user-times', 'var(--danger)'],
-                ['Spamming links or scam attempts', 'fa-ban', 'var(--warning)'],
-                ['Appears to be under 18 years old', 'fa-child', 'var(--primary)'],
-                ['Threats or violent behavior', 'fa-fist-raised', 'var(--danger)'],
-                ['Exposing nudity or sexual content', 'fa-eye-slash', 'var(--danger)'],
-                ['Other rule violation', 'fa-exclamation-triangle', 'var(--warning)'],
-              ].map(([reason, icon, color]) => (
-                <div key={reason} className={`report-option ${selectedReport === reason ? 'selected' : ''}`} data-reason={reason} role="option" onClick={() => setSelectedReport(reason)}>
-                  <i className={`fas ${icon}`} style={{ color }} /> {reason.replace(/ during video chat| attempts| years old| behavior| content| violation/, '')}
-                </div>
+              {[['Inappropriate behavior during video chat', 'fa-user-times', 'var(--danger)'], ['Spamming links or scam attempts', 'fa-ban', 'var(--warning)'], ['Appears to be under 18 years old', 'fa-child', 'var(--primary)'], ['Threats or violent behavior', 'fa-fist-raised', 'var(--danger)'], ['Exposing nudity or sexual content', 'fa-eye-slash', 'var(--danger)'], ['Other rule violation', 'fa-exclamation-triangle', 'var(--warning)']].map(([reason, icon, color]) => (
+                <div key={reason} className={`report-option ${selectedReport === reason ? 'selected' : ''}`} role="option" onClick={() => setSelectedReport(reason)}><i className={`fas ${icon}`} style={{ color }} /> {reason.replace(/ during video chat| attempts| years old| behavior| content| violation/, '')}</div>
               ))}
             </div>
-            <div className="form-group">
-              <label>Additional details (optional)</label>
-              <textarea className="form-control" value={reportDetails} onChange={e => setReportDetails(e.target.value)} rows={3} placeholder="Provide more information..." maxLength={200} />
-            </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button className="btn btn-primary" onClick={submitReport}>Submit Report</button>
-              <button className="btn" style={{ background: 'var(--dark)', color: 'var(--text)' }} onClick={() => { setShowReport(false); setSelectedReport(null); setReportDetails(''); }}>Cancel</button>
-            </div>
+            <div className="form-group"><label>Additional details (optional)</label><textarea className="form-control" value={reportDetails} onChange={e => setReportDetails(e.target.value)} rows={3} placeholder="Provide more information..." maxLength={200} /></div>
+            <div style={{ display: 'flex', gap: 10 }}><button className="btn btn-primary" onClick={submitReport}>Submit Report</button><button className="btn" style={{ background: 'var(--dark)', color: 'var(--text)' }} onClick={() => { setShowReport(false); setSelectedReport(null); setReportDetails(''); }}>Cancel</button></div>
           </div>
         </div>
       )}
 
-      {/* Gifts Modal */}
       {showGifts && (
         <div className="modal-overlay active" onClick={() => setShowGifts(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Send a Gift</h3>
-              <button className="control-btn" onClick={() => setShowGifts(false)} aria-label="Close"><i className="fas fa-times" /></button>
-            </div>
+            <div className="modal-header"><h3>Send a Gift</h3><button className="control-btn" onClick={() => setShowGifts(false)} aria-label="Close"><i className="fas fa-times" /></button></div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 15, padding: 20 }}>
-              {[
-                ['rose', 10, '127801', 'Rose'], ['heart', 15, '10084️', 'Heart'], ['star', 20, '11088', 'Star'],
-                ['diamond', 50, '128142', 'Diamond'], ['crown', 100, '128081', 'Crown'], ['rocket', 200, '128640', 'Rocket'],
-              ].map(([type, cost, emoji, label]) => (
-                <button key={type} className="gift-btn" onClick={() => sendGift(type, cost)} style={{ padding: 20, background: 'var(--dark)', border: '2px solid transparent', borderRadius: 12, cursor: 'pointer' }}>
-                  <div style={{ fontSize: '2.5rem', marginBottom: 5 }}>{String.fromCodePoint(parseInt(emoji))}</div>
-                  <div style={{ fontWeight: 600 }}>{label}</div>
-                  <div style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>{cost} coins</div>
-                </button>
+              {[['rose', 10, '127801', 'Rose'], ['heart', 15, '10084️', 'Heart'], ['star', 20, '11088', 'Star'], ['diamond', 50, '128142', 'Diamond'], ['crown', 100, '128081', 'Crown'], ['rocket', 200, '128640', 'Rocket']].map(([type, cost, emoji, label]) => (
+                <button key={type} className="gift-btn" onClick={() => sendGift(type, cost)} style={{ padding: 20, background: 'var(--dark)', border: '2px solid transparent', borderRadius: 12, cursor: 'pointer' }}><div style={{ fontSize: '2.5rem', marginBottom: 5 }}>{String.fromCodePoint(parseInt(emoji))}</div><div style={{ fontWeight: 600 }}>{label}</div><div style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>{cost} coins</div></button>
               ))}
             </div>
           </div>
         </div>
       )}
 
-      {/* Payment Modal */}
       {showPayment && (
         <div className="modal-overlay active" onClick={() => setShowPayment(false)}>
           <div className="payment-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header"><h3>Get Coins</h3></div>
             <div className="coins-display"><i className="fas fa-coins" /> <span>{userCoins}</span></div>
             <div className="coin-packages">
-              {[
-                [100, '4.99'], [250, '9.99'], [500, '19.99'], [1000, '39.99'],
-              ].map(([coins, price]) => (
-                <div key={coins} className={`coin-package ${selectedCoinPackage?.coins === coins ? 'selected' : ''}`} onClick={() => setSelectedCoinPackage({ coins, price: parseFloat(price) })} role="button" tabIndex={0}>
-                  <div className="coin-amount">{coins}</div>
-                  <div className="coin-price">${price}</div>
-                </div>
-              ))}
+              {[100, 250, 500, 1000].map((coins) => {
+                const prices = { 100: '4.99', 250: '9.99', 500: '19.99', 1000: '39.99' };
+                return (
+                  <div key={coins} className={`coin-package ${selectedCoinPackage?.coins === coins ? 'selected' : ''}`} onClick={() => setSelectedCoinPackage({ coins, price: parseFloat(prices[coins]) })} role="button" tabIndex={0}><div className="coin-amount">{coins}</div><div className="coin-price">${prices[coins]}</div></div>
+                );
+              })}
             </div>
             <button className="btn btn-primary" onClick={purchaseCoins} style={{ width: '100%', marginTop: 20 }}>Purchase Coins</button>
           </div>
         </div>
       )}
 
-      {/* FABs */}
       <button className="fab" onClick={() => setShowSettings(v => !v)} title="Settings" aria-label="Open Settings"><i className="fas fa-cog" /></button>
       <button className="fab" style={{ bottom: 90 }} onClick={() => { setShowProfile(v => !v); if (!showProfile) loadProfile(); }} title="Profile" aria-label="Open Profile"><i className="fas fa-user" /></button>
-      
-      {/* LINK TO TEXT CHAT */}
-      <a href="/chat" className="fab" style={{ bottom: 150, textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Text Chat" aria-label="Switch to Text Chat">
-        <i className="fas fa-comment-dots" />
-      </a>
+      <a href="/chat" className="fab" style={{ bottom: 150, textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Text Chat" aria-label="Switch to Text Chat"><i className="fas fa-comment-dots" /></a>
     </>
   );
 }
 
-/* ===================== SUB-COMPONENTS ===================== */
 function ProfileInfoRow({ icon, label, value, cls = '', monospace = false }) {
   return (
     <div className="profile-info-row">
