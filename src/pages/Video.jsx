@@ -1,3 +1,7 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { io } from 'socket.io-client';
+import './Video.css';
+
 /* ===================== CONFIGURATION ===================== */
 const CONFIG = {
   BACKEND: 'https://term-production-bf65.up.railway.app',
