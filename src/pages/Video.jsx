@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import './Video.css';
+import { BACKEND } from '../utils/api';
 
 /* ===================== CONFIGURATION ===================== */
 const CONFIG = {
