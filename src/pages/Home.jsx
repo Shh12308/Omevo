@@ -1,9 +1,12 @@
 import React from 'react';
-import { BACKEND } from '../utils/api';
+import { BACKEND } from "../utils/api";
+
 const Home = () => {
   
+  const redirectURL = encodeURIComponent("https://omevo.online/video");
+
   const handleLogin = (provider) => {
-    window.location.href = `${BACKEND}/auth/${provider}`;
+    window.location.href = `${backendURL}/auth/${provider}?redirect=${redirectURL}`;
   };
 
   // Styles converted to a React style object
