@@ -8,7 +8,7 @@ export default function AuthCallBack() {
       const token = params.get("token");
 
       if (!token) {
-        window.location.href = "/login";
+        window.location.href = "/video";
         return;
       }
 
@@ -24,7 +24,7 @@ export default function AuthCallBack() {
         });
 
         if (res.status === 401) {
-          window.location.href = "/login";
+          window.location.href = "/video";
           return;
         }
 
@@ -32,13 +32,13 @@ export default function AuthCallBack() {
 
         // NEW USER → go to signup flow
         if (!data.username) {
-          window.location.href = "/signup";
+          window.location.href = "/video";
           return;
         }
 
         // Kid account
         if (data.is_kid) {
-          window.location.href = "/kids";
+          window.location.href = "/video";
           return;
         }
 
@@ -47,7 +47,7 @@ export default function AuthCallBack() {
 
       } catch (err) {
         console.error("AuthCallback error:", err);
-        window.location.href = "/login";
+        window.location.href = "/video";
       }
     };
 
