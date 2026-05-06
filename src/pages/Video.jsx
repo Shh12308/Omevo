@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import './Video.css';
-import { BACKEND } from '../utils/api';
+import { BACKEND } from "../utils/api";
 
-/* ===================== CONFIGURATION ===================== */
+/* =====================CONFIGURATION ===================== */
 const CONFIG = {
   AGORA_APP_ID: '0f9094ed4a8e4dea934059b0ea8b5182',
   STRIPE_PUBLISHABLE_KEY: 'pk_test_your_stripe_key_here',
