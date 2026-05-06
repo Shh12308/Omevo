@@ -3,7 +3,7 @@ import { BACKEND } from "../utils/api";
 
 const Home = () => {
   
-  const redirectURL = encodeURIComponent("https://omevo.online/auth/callback");
+  const redirectURL = encodeURIComponent("https://omevo.online/video");
 
   const handleLogin = (provider) => {
     window.location.href = `${BACKEND}/auth/${provider}?redirect=${redirectURL}`;
