@@ -4,6 +4,7 @@ import Home from './pages/Home';
 import Video from './pages/Video';
 import Chat from './pages/Chat';
 import Terms from './pages/Terms';
+import AuthCallBack from './pages/AuthCallBack';
 
 
 function App() {
@@ -13,6 +14,7 @@ function App() {
         {/* Public Routes */}
         <Route path="/" element={<Home />} />
         <Route path="/chat" element={<Chat />} />
+        <Route path="/auth/callback" element={<AuthCallBack />} />
         <Route path="/video" element={<Video />} />
         <Route path="/terms" element={<Terms />} />
         
