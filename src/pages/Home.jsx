@@ -1,11 +1,9 @@
 import React from 'react';
-
+import { BACKEND } from '../utils/api';
 const Home = () => {
-  const backendURL = "https://term-production-bf65.up.railway.app";
-  const redirectURL = encodeURIComponent("https://omevo.vercel.app/video");
-
+  
   const handleLogin = (provider) => {
-    window.location.href = `${backendURL}/auth/${provider}?redirect=${redirectURL}`;
+    window.location.href = `${BACKEND}/auth/${provider}`;
   };
 
   // Styles converted to a React style object
