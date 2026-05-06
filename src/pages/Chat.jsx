@@ -1,9 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
-
-const CONFIG = {
-  BACKEND: 'https://term-production-bf65.up.railway.app',
-};
+import { BACKEND } from '../utils/api';
 
 // --- STYLES ---
 const CSS_STYLES = `
