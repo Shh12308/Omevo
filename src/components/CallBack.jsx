@@ -1,29 +1,52 @@
 import { useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { BACKEND } from "../utils/api";
 
-export default function AuthCallback() {
-  const navigate = useNavigate();
-  const [params] = useSearchParams();
-
+export default function AuthCallBack() {
   useEffect(() => {
-    const token = params.get("token");
-    const error = params.get("error");
+    const run = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get("token");
 
-    if (error) {
-      console.error("OAuth error:", error);
-      navigate("/");
-      return;
-    }
+      if (!token) {
+        window.location.href = "/";
+        return;
+      }
 
-    if (!token) {
-      console.error("Missing token");
-      navigate("/");
-      return;
-    }
+      // ✅ Save token
+      localStorage.setItem("token", token);
 
-    localStorage.setItem("token", token);
-    navigate("/video");
-  }, [navigate, params]);
+      try {
+        // ✅ Get user (should auto-create if new)
+        const res = await fetch(`${BACKEND}/api/user/me`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
-  return <p>Signing you in...</p>;
+        if (res.status === 401) {
+          window.location.href = "/";
+          return;
+        }
+
+        const data = await res.json();
+
+        // 👶 Kid account
+        if (data.is_kid) {
+          window.location.href = "/kids";
+          return;
+        }
+
+        // ✅ Normal user (new OR existing)
+        window.location.href = "/video";
+
+      } catch (err) {
+        console.error("AuthCallback error:", err);
+        window.location.href = "/";
+      }
+    };
+
+    run();
+  }, []);
+
+  return <div style={{ color: "white" }}>Logging you in...</div>;
 }
