@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { BACKEND } from "../utils/api"; // 👈 important
+import { BACKEND } from "../utils/api";
 
 export default function AuthCallback() {
   const navigate = useNavigate();
@@ -9,7 +9,7 @@ export default function AuthCallback() {
   useEffect(() => {
     const code = params.get("code");
     const error = params.get("error");
-    const provider = params.get("provider"); // optional
+    const provider = params.get("provider");
 
     if (error) {
       console.error("OAuth error:", error);
@@ -23,17 +23,23 @@ export default function AuthCallback() {
 
     const login = async () => {
       try {
-        const res = await api.post("/auth/callback", {
-          code,
-          provider, // send if backend supports multiple providers
+        const res = await fetch(`${BACKEND}/auth/callback`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            code,
+            provider,
+          }),
         });
 
-        // Save token (or skip if using cookies)
-        if (res.data?.token) {
-          localStorage.setItem("token", res.data.token);
+        const data = await res.json();
+
+        if (data?.token) {
+          localStorage.setItem("token", data.token);
         }
 
-        // 🚀 Redirect to video page
         navigate("/video");
       } catch (err) {
         console.error("Auth failed:", err);
