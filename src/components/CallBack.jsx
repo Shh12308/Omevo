@@ -8,37 +8,22 @@ export default function AuthCallback() {
   const [params] = useSearchParams();
 
   useEffect(() => {
-    const code = params.get("code");
-    const error = params.get("error");
-    const provider = params.get("provider");
+  const token = params.get("token");
+  const error = params.get("error");
 
-    if (error) {
-      console.error("OAuth error:", error);
-      return navigate("/");
-    }
+  if (error) {
+    console.error("OAuth error:", error);
+    return navigate("/");
+  }
 
-    if (!code) {
-      console.error("Missing code");
-      return navigate("/");
-    }
+  if (!token) {
+    console.error("Missing token");
+    return navigate("/");
+  }
 
-    const login = async () => {
-      try {
-        const res = await axios.post(`${BACKEND}/auth/callback`, {
-          code,
-          provider,
-        });
-
-        if (res.data?.token) {
-          localStorage.setItem("token", res.data.token);
-        }
-
-        navigate("/video");
-      } catch (err) {
-        console.error("Auth failed:", err);
-        navigate("/");
-      }
-    };
+  localStorage.setItem("token", token);
+  navigate("/video");
+}, [navigate, params]);
 
     login();
   }, [navigate, params]);
