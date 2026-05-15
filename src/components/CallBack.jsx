@@ -13,12 +13,12 @@ export default function AuthCallback() {
 
     if (error) {
       console.error("OAuth error:", error);
-      return navigate("/login");
+      return navigate("/");
     }
 
     if (!code) {
       console.error("Missing code");
-      return navigate("/login");
+      return navigate("/");
     }
 
     const login = async () => {
@@ -37,7 +37,7 @@ export default function AuthCallback() {
         navigate("/video");
       } catch (err) {
         console.error("Auth failed:", err);
-        navigate("/login");
+        navigate("/");
       }
     };
 
