@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { BACKEND } from "./utils/api"; // 👈 important
+import { BACKEND } from "../utils/api"; // 👈 important
 
 export default function AuthCallback() {
   const navigate = useNavigate();
