@@ -4,8 +4,8 @@ import Home from './pages/Home';
 import Video from './pages/Video';
 import Chat from './pages/Chat';
 import Terms from './pages/Terms';
-
-
+import AuthCallBack from './components/CallBack';
+import NotFound from './pages/NotFound';
 function App() {
   return (
     <BrowserRouter>
@@ -15,9 +15,9 @@ function App() {
         <Route path="/chat" element={<Chat />} />
         <Route path="/video" element={<Video />} />
         <Route path="/terms" element={<Terms />} />
-        
+        <Route path="/auth/callback" element={<AuthCallBack />} />
         {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
   );
