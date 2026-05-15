@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import axios from "axios";
 import { BACKEND } from "../utils/api";
 
 export default function AuthCallback() {
@@ -7,47 +8,33 @@ export default function AuthCallback() {
   const [params] = useSearchParams();
 
   useEffect(() => {
-    const code = params.get("code");
+    const token = params.get("token");
     const error = params.get("error");
-    const provider = params.get("provider");
 
     if (error) {
       console.error("OAuth error:", error);
-      return navigate("/");
+      navigate("/");
+      return;
     }
 
-    if (!code) {
-      console.error("Missing code");
-      return navigate("/");
+    if (!token) {
+      console.error("Missing token");
+      navigate("/");
+      return;
     }
 
-    const login = async () => {
-      try {
-        const res = await fetch(`${BACKEND}/auth/callback`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            code,
-            provider,
-          }),
-        });
+    try {
+      // store token
+      localStorage.setItem("token", token);
 
-        const data = await res.json();
+      // optional: set default header for future requests
+      axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 
-        if (data?.token) {
-          localStorage.setItem("token", data.token);
-        }
-
-        navigate("/video");
-      } catch (err) {
-        console.error("Auth failed:", err);
-        navigate("/");
-      }
-    };
-
-    login();
+      navigate("/video");
+    } catch (err) {
+      console.error("Auth failed:", err);
+      navigate("/");
+    }
   }, [navigate, params]);
 
   return <p>Signing you in...</p>;
