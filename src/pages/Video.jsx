@@ -5,7 +5,7 @@ import './Video.css';
 
 /* =====================CONFIGURATION ===================== */
 const CONFIG = {
-  BACKEND: 'https://api.omevo.online',
+  BACKEND: 'https://term-production-bf65.up.railway.app',
   AGORA_APP_ID: '0f9094ed4a8e4dea934059b0ea8b5182',
   STRIPE_PUBLISHABLE_KEY: 'pk_test_your_stripe_key_here',
   DEBUG_MODE: false,
