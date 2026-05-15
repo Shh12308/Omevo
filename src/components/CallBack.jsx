@@ -8,33 +8,39 @@ export default function AuthCallback() {
   const [params] = useSearchParams();
 
   useEffect(() => {
-    const token = params.get("token");
+    const code = params.get("code");
     const error = params.get("error");
+    const provider = params.get("provider");
 
     if (error) {
       console.error("OAuth error:", error);
-      navigate("/");
-      return;
+      return navigate("/");
     }
 
-    if (!token) {
-      console.error("Missing token");
-      navigate("/");
-      return;
+    if (!code) {
+      console.error("Missing code");
+      return navigate("/");
     }
 
-    try {
-      // store token
-      localStorage.setItem("token", token);
+    const login = async () => {
+      try {
+        const res = await axios.post(`${BACKEND}/auth/callback`, {
+          code,
+          provider,
+        });
 
-      // optional: set default header for future requests
-      axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+        if (res.data?.token) {
+          localStorage.setItem("token", res.data.token);
+        }
 
-      navigate("/video");
-    } catch (err) {
-      console.error("Auth failed:", err);
-      navigate("/");
-    }
+        navigate("/video");
+      } catch (err) {
+        console.error("Auth failed:", err);
+        navigate("/");
+      }
+    };
+
+    login();
   }, [navigate, params]);
 
   return <p>Signing you in...</p>;
