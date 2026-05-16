@@ -1,5 +1,5 @@
 import "../index.css";
-import "../pages/Video.module.css"; // move your global css here ONLY if needed
+import styles from "./Video.module.css";
 
 export default function App({ Component, pageProps }) {
   return <Component {...pageProps} />;
