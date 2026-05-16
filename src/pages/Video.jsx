@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
-import './Video.css';
+import styles from "./Video.module.css";
 
 
 /* =====================CONFIGURATION ===================== */
