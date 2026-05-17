@@ -5,8 +5,7 @@ export default function AuthCallBack() {
   useEffect(() => {
     const run = async () => {
       try {
-        const params = new URLSearchParams(window.location.search);
-        const token = params.get("token");
+        const token = new URLSearchParams(window.location.search).get("token");
 
         if (!token) {
           window.location.replace("/");
@@ -16,9 +15,7 @@ export default function AuthCallBack() {
         localStorage.setItem("token", token);
 
         const res = await fetch(`${BACKEND}/auth/me`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
         });
 
         if (!res.ok) {
@@ -27,13 +24,12 @@ export default function AuthCallBack() {
           return;
         }
 
-        // small delay ensures React paint (fixes white screen cases)
         setTimeout(() => {
           window.location.replace("/video");
         }, 200);
 
       } catch (err) {
-        console.error("Callback error:", err);
+        console.error(err);
         localStorage.removeItem("token");
         window.location.replace("/");
       }
@@ -42,15 +38,5 @@ export default function AuthCallBack() {
     run();
   }, []);
 
-  return (
-    <div style={{
-      height: "100vh",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontSize: 16
-    }}>
-      Logging you in...
-    </div>
-  );
+  return <div>Logging you in...</div>;
 }
