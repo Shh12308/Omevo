@@ -4,7 +4,7 @@ import Home from './pages/Home';
 import Video from './pages/Video';
 import Chat from './pages/Chat';
 import Terms from './pages/Terms';
-import AuthCallBack from './components/CallBack';
+import AuthCallBack from './pages/CallBack';
 import NotFound from './pages/NotFound';
 function App() {
   return (
