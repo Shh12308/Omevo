@@ -5,7 +5,8 @@ export default function AuthCallBack() {
   useEffect(() => {
     const run = async () => {
       try {
-        const token = new URLSearchParams(window.location.search).get("token");
+        const params = new URLSearchParams(window.location.search);
+        const token = params.get("token");
 
         if (!token) {
           window.location.replace("/");
@@ -26,11 +27,13 @@ export default function AuthCallBack() {
           return;
         }
 
-        // ✅ HARD REDIRECT (no React router issues)
-        window.location.replace("/video");
+        // small delay ensures React paint (fixes white screen cases)
+        setTimeout(() => {
+          window.location.replace("/video");
+        }, 200);
 
       } catch (err) {
-        console.error(err);
+        console.error("Callback error:", err);
         localStorage.removeItem("token");
         window.location.replace("/");
       }
@@ -41,11 +44,11 @@ export default function AuthCallBack() {
 
   return (
     <div style={{
-      color: "white",
       height: "100vh",
       display: "flex",
       alignItems: "center",
-      justifyContent: "center"
+      justifyContent: "center",
+      fontSize: 16
     }}>
       Logging you in...
     </div>
