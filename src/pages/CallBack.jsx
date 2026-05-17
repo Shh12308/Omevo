@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect } from 'react';
 import { BACKEND } from "../utils/api";
 
 export default function AuthCallBack() {
