@@ -4,43 +4,54 @@ import { BACKEND } from "../utils/api";
 export default function AuthCallBack() {
   useEffect(() => {
     const run = async () => {
-      const params = new URLSearchParams(window.location.search);
-      const token = params.get("token");
-
-      if (!token) {
-        window.location.href = "/";
-        return;
-      }
-
-      // ✅ Save token
-      localStorage.setItem("token", token);
-
       try {
-        // ✅ Get user (should auto-create if new)
-        const res = await fetch(`${BACKEND}/api/user/me`, {
+        const params = new URLSearchParams(window.location.search);
+        const token = params.get("token");
+
+        // ❌ No token → go home
+        if (!token) {
+          window.location.href = "/";
+          return;
+        }
+
+        // ✅ Save token
+        localStorage.setItem("token", token);
+
+        // ✅ Fetch user
+        const res = await fetch(`${BACKEND}/auth/me`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         });
 
+        // ❌ Invalid token
         if (res.status === 401) {
+          localStorage.removeItem("token");
           window.location.href = "/";
           return;
         }
 
         const data = await res.json();
+        const user = data.user;
+
+        // ❌ No user returned
+        if (!user) {
+          window.location.href = "/";
+          return;
+        }
 
         // 👶 Kid account
-        if (data.is_kid) {
+        if (user.is_kid) {
           window.location.href = "/kids";
           return;
         }
 
-        // ✅ Normal user (new OR existing)
+        // ✅ Normal user
         window.location.href = "/video";
 
       } catch (err) {
         console.error("AuthCallback error:", err);
+        localStorage.removeItem("token");
         window.location.href = "/";
       }
     };
