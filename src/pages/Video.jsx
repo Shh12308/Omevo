@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import styles from "./Video.module.css";
 
-
-/* =====================CONFIGURATION ===================== */
+/* ===================== CONFIGURATION ===================== */
 const CONFIG = {
   BACKEND: 'https://term-production-bf65.up.railway.app',
   AGORA_APP_ID: '0f9094ed4a8e4dea934059b0ea8b5182',
@@ -579,8 +578,6 @@ export default function Video() {
 
   const sendGift = async (type, cost) => {
     if (!partnerIdRef.current) { addToast('No partner', 'error'); setShowGifts(false); return; }
-    
-    // Use Stripe direct checkout instead of coins
     try {
       const r = await safeFetch(CONFIG.BACKEND + '/api/create-gift-checkout', {
         method: 'POST',
@@ -731,11 +728,23 @@ export default function Video() {
   /* ===================== SOCKET ===================== */
   useEffect(() => {
     if (!tokenRef.current) return;
-    const socket = io(CONFIG.BACKEND);
+
+    // FIX: Pass token in auth during handshake
+    const socket = io(CONFIG.BACKEND, {
+      auth: { token: tokenRef.current }
+    });
+
     socketRef.current = socket;
-    socket.on('connect', () => { if (tokenRef.current) socket.emit('auth', { token: tokenRef.current }); });
+
+    socket.on('connect', () => {
+      console.log('Socket connected');
+    });
+
+    socket.on('authenticated', () => {
+      console.log('Socket authenticated');
+    });
+
     socket.on('disconnect', () => {});
-    socket.on('authenticated', () => {});
     socket.on('match_found', (d) => {
       if (isMatchingRef.current && !isInCallRef.current) {
         isMatchingRef.current = false;
@@ -752,6 +761,7 @@ export default function Video() {
     socket.on('report_submitted', (d) => addToastRef.current(d.message || 'Report submitted', 'success'));
     socket.on('typing', (d) => { if (d.uid && userIdRef.current && String(d.uid) !== String(userIdRef.current)) { setShowTyping(true); setTimeout(() => setShowTyping(false), 3000); } });
     socket.on('error', (d) => { if (d.message) addToastRef.current(d.message, 'error'); });
+
     return () => { socket.disconnect(); socketRef.current = null; };
   }, [addMsgToChat, triggerGiftAnimation]);
 
@@ -786,30 +796,24 @@ export default function Video() {
         </div>
       )}
 
-      {/* BAN OVERLAY WITH OFFENDING CONTENT */}
       {banData && (
         <div className="ban-overlay active" role="alertdialog" aria-labelledby="banTitle" aria-describedby="banDesc">
           <div className="ban-bg-noise" />
           <div className="ban-scanline" />
           <div className="ban-container">
             <div className="ban-stamp" id="banTitle">BANNED</div>
-            
-            {/* Show offending frame if video ban */}
             {banData.type === 'video' && banData.offendingFrame && (
               <div className="ban-evidence-frame">
                 <div className="ban-evidence-label">Flagged Content</div>
                 <img src={banData.offendingFrame} alt="Flagged content" className="ban-evidence-img" />
               </div>
             )}
-            
-            {/* Show offending text if chat ban */}
             {banData.type === 'chat' && banData.text && (
               <div className="ban-evidence-frame">
                 <div className="ban-evidence-label">Flagged Message</div>
                 <div className="ban-evidence-text">"{banData.text}"</div>
               </div>
             )}
-            
             <div className="ban-reason-frame">
               <div className="ban-reason-label">Reason for Suspension</div>
               <div className="ban-reason-icon"><i className="fas fa-exclamation-triangle" style={{ color: 'var(--danger)' }} /></div>
@@ -848,7 +852,6 @@ export default function Video() {
         </div>
       )}
 
-      {/* PRE-CONNECT MATCH MODAL (OmeTV Style) */}
       {showMatchModal && pendingMatch && (
         <div className="match-modal-overlay active">
           <div className="match-modal-container">
@@ -899,7 +902,6 @@ export default function Video() {
         </div>
       )}
 
-      {/* GIFT ANIMATION POPUP */}
       {showGiftPopup && giftAnimation && (
         <div className="gift-popup-overlay">
           <div className="gift-popup-content">
@@ -1086,7 +1088,7 @@ export default function Video() {
         </div>
       </div>
 
-      {/* PROFILE PANEL - Scrollable */}
+      {/* PROFILE PANEL */}
       <div className={`side-panel right ${showProfile ? 'open' : ''}`} role="dialog" aria-label="Profile">
         <div className="panel-header"><h2>Profile</h2><button className="control-btn" onClick={() => setShowProfile(false)} aria-label="Close Profile"><i className="fas fa-times" /></button></div>
         <div className="panel-content panel-content-scrollable">
@@ -1159,8 +1161,8 @@ export default function Video() {
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header"><h3>Report User</h3></div>
             <div className="report-reasons" role="listbox">
-              {[['Inappropriate behavior during video chat', 'fa-user-times', 'var(--danger)'], ['Spamming links or scam attempts', 'fa-ban', 'var(--warning)'], ['Appears to be under 18 years old', 'fa-child', 'var(--primary)'], ['Threats or violent behavior', 'fa-fist-raised', 'var(--danger)'], ['Exposing nudity or sexual content', 'fa-eye-slash', 'var(--danger)'], ['Other rule violation', 'fa-exclamation-triangle', 'var(--warning)']].map(([reason, icon, color]) => (
-                <div key={reason} className={`report-option ${selectedReport === reason ? 'selected' : ''}`} role="option" onClick={() => setSelectedReport(reason)}><i className={`fas ${icon}`} style={{ color }} /> {reason.replace(/ during video chat| attempts| years old| behavior| content| violation/, '')}</div>
+              {[['Inappropriate behavior', 'fa-user-times', 'var(--danger)'], ['Spamming or scam attempts', 'fa-ban', 'var(--warning)'], ['Appears to be under 18', 'fa-child', 'var(--primary)'], ['Threats or violence', 'fa-fist-raised', 'var(--danger)'], ['Nudity or sexual content', 'fa-eye-slash', 'var(--danger)'], ['Other rule violation', 'fa-exclamation-triangle', 'var(--warning)']].map(([reason, icon, color]) => (
+                <div key={reason} className={`report-option ${selectedReport === reason ? 'selected' : ''}`} role="option" onClick={() => setSelectedReport(reason)}><i className={`fas ${icon}`} style={{ color }} /> {reason}</div>
               ))}
             </div>
             <div className="form-group"><label>Additional details (optional)</label><textarea className="form-control" value={reportDetails} onChange={e => setReportDetails(e.target.value)} rows={3} placeholder="Provide more information..." maxLength={200} /></div>
