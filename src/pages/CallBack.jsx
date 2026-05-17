@@ -32,21 +32,14 @@ export default function AuthCallBack() {
         }
 
         const data = await res.json();
-        const user = data.user;
 
-        // ❌ No user returned
-        if (!user) {
+        // ❌ No user → fallback
+        if (!data.user) {
           window.location.href = "/";
           return;
         }
 
-        // 👶 Kid account
-        if (user.is_kid) {
-          window.location.href = "/kids";
-          return;
-        }
-
-        // ✅ Normal user
+        // ✅ ALWAYS go to video
         window.location.href = "/video";
 
       } catch (err) {
