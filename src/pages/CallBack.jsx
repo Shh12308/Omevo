@@ -5,45 +5,42 @@ export default function AuthCallBack() {
   useEffect(() => {
     const run = async () => {
       try {
+        console.log("Auth callback mounted");
+
         const params = new URLSearchParams(window.location.search);
         const token = params.get("token");
 
-        // ❌ No token → go home
+        console.log("Token:", token);
+
         if (!token) {
           window.location.href = "/";
           return;
         }
 
-        // ✅ Save token
         localStorage.setItem("token", token);
 
-        // ✅ Fetch user
         const res = await fetch(`${BACKEND}/auth/me`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         });
 
-        // ❌ Invalid token
-        if (res.status === 401) {
+        console.log("Status:", res.status);
+
+        if (!res.ok) {
           localStorage.removeItem("token");
           window.location.href = "/";
           return;
         }
 
         const data = await res.json();
+        console.log("User:", data);
 
-        // ❌ No user → fallback
-        if (!data.user) {
-          window.location.href = "/";
-          return;
-        }
-
-        // ✅ ALWAYS go to video
-        window.location.href = "/video";
+        // HARD REDIRECT (removes any routing issues)
+        window.location.replace("/video");
 
       } catch (err) {
-        console.error("AuthCallback error:", err);
+        console.error("Callback error:", err);
         localStorage.removeItem("token");
         window.location.href = "/";
       }
@@ -52,5 +49,9 @@ export default function AuthCallBack() {
     run();
   }, []);
 
-  return <div style={{ color: "white" }}>Logging you in...</div>;
+  return (
+    <div style={{ color: "black", padding: 20 }}>
+      Logging you in...
+    </div>
+  );
 }
