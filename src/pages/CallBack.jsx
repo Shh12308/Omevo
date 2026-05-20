@@ -5,31 +5,38 @@ export default function AuthCallBack() {
   useEffect(() => {
     const run = async () => {
       try {
-        const token = new URLSearchParams(window.location.search).get("token");
+        const params = new URLSearchParams(window.location.search);
+        const token = params.get("token");
 
         if (!token) {
           window.location.replace("/");
           return;
         }
 
+        // Store token
         localStorage.setItem("token", token);
 
+        // Validate token with backend
         const res = await fetch(`${BACKEND}/auth/me`, {
-          headers: { Authorization: `Bearer ${token}` },
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
         });
 
         if (!res.ok) {
-          localStorage.removeItem("token");
-          window.location.replace("/");
-          return;
+          throw new Error("Invalid token");
         }
 
-        setTimeout(() => {
-          window.location.replace("/video");
-        }, 200);
+        // Optional: parse user data if needed
+        // const data = await res.json();
+
+        // Redirect immediately (no need for setTimeout)
+        window.location.replace("/video");
 
       } catch (err) {
-        console.error(err);
+        console.error("Auth callback error:", err);
         localStorage.removeItem("token");
         window.location.replace("/");
       }
