@@ -14,23 +14,139 @@ const CONFIG = {
 };
 
 /* ===================== COUNTRY DATA ===================== */
-const COUNTRIES = [
+export const COUNTRIES = [
   { code: "any", label: "🌍", name: "Worldwide" },
   { code: "nearby", label: "📍", name: "Nearby" },
-  { code: "us", label: "🇺🇸", name: "USA" },
-  { code: "gb", label: "🇬🇧", name: "UK" },
-  { code: "ca", label: "🇨🇦", name: "Canada" },
+
+  { code: "af", label: "🇦🇫", name: "Afghanistan" },
+  { code: "al", label: "🇦🇱", name: "Albania" },
+  { code: "dz", label: "🇩🇿", name: "Algeria" },
+  { code: "ad", label: "🇦🇩", name: "Andorra" },
+  { code: "ao", label: "🇦🇴", name: "Angola" },
+  { code: "ar", label: "🇦🇷", name: "Argentina" },
+  { code: "am", label: "🇦🇲", name: "Armenia" },
   { code: "au", label: "🇦🇺", name: "Australia" },
-  { code: "de", label: "🇩🇪", name: "Germany" },
-  { code: "fr", label: "🇫🇷", name: "France" },
-  { code: "in", label: "🇮🇳", name: "India" },
-  { code: "jp", label: "🇯🇵", name: "Japan" },
+  { code: "at", label: "🇦🇹", name: "Austria" },
+  { code: "az", label: "🇦🇿", name: "Azerbaijan" },
+
+  { code: "bs", label: "🇧🇸", name: "Bahamas" },
+  { code: "bh", label: "🇧🇭", name: "Bahrain" },
+  { code: "bd", label: "🇧🇩", name: "Bangladesh" },
+  { code: "bb", label: "🇧🇧", name: "Barbados" },
+  { code: "by", label: "🇧🇾", name: "Belarus" },
+  { code: "be", label: "🇧🇪", name: "Belgium" },
+  { code: "bz", label: "🇧🇿", name: "Belize" },
+  { code: "bj", label: "🇧🇯", name: "Benin" },
+  { code: "bt", label: "🇧🇹", name: "Bhutan" },
+  { code: "bo", label: "🇧🇴", name: "Bolivia" },
+  { code: "ba", label: "🇧🇦", name: "Bosnia & Herzegovina" },
+  { code: "bw", label: "🇧🇼", name: "Botswana" },
   { code: "br", label: "🇧🇷", name: "Brazil" },
-  { code: "mx", label: "🇲🇽", name: "Mexico" },
-  { code: "es", label: "🇪🇸", name: "Spain" },
+  { code: "bn", label: "🇧🇳", name: "Brunei" },
+  { code: "bg", label: "🇧🇬", name: "Bulgaria" },
+  { code: "bf", label: "🇧🇫", name: "Burkina Faso" },
+  { code: "bi", label: "🇧🇮", name: "Burundi" },
+
+  { code: "kh", label: "🇰🇭", name: "Cambodia" },
+  { code: "cm", label: "🇨🇲", name: "Cameroon" },
+  { code: "ca", label: "🇨🇦", name: "Canada" },
+  { code: "cv", label: "🇨🇻", name: "Cape Verde" },
+  { code: "cf", label: "🇨🇫", name: "Central African Republic" },
+  { code: "td", label: "🇹🇩", name: "Chad" },
+  { code: "cl", label: "🇨🇱", name: "Chile" },
+  { code: "cn", label: "🇨🇳", name: "China" },
+  { code: "co", label: "🇨🇴", name: "Colombia" },
+  { code: "km", label: "🇰🇲", name: "Comoros" },
+  { code: "cg", label: "🇨🇬", name: "Congo" },
+  { code: "cr", label: "🇨🇷", name: "Costa Rica" },
+  { code: "hr", label: "🇭🇷", name: "Croatia" },
+  { code: "cu", label: "🇨🇺", name: "Cuba" },
+  { code: "cy", label: "🇨🇾", name: "Cyprus" },
+  { code: "cz", label: "🇨🇿", name: "Czechia" },
+
+  { code: "dk", label: "🇩🇰", name: "Denmark" },
+  { code: "dj", label: "🇩🇯", name: "Djibouti" },
+  { code: "dm", label: "🇩🇲", name: "Dominica" },
+  { code: "do", label: "🇩🇴", name: "Dominican Republic" },
+
+  { code: "ec", label: "🇪🇨", name: "Ecuador" },
+  { code: "eg", label: "🇪🇬", name: "Egypt" },
+  { code: "sv", label: "🇸🇻", name: "El Salvador" },
+  { code: "ee", label: "🇪🇪", name: "Estonia" },
+  { code: "et", label: "🇪🇹", name: "Ethiopia" },
+
+  { code: "fj", label: "🇫🇯", name: "Fiji" },
+  { code: "fi", label: "🇫🇮", name: "Finland" },
+  { code: "fr", label: "🇫🇷", name: "France" },
+
+  { code: "de", label: "🇩🇪", name: "Germany" },
+  { code: "gh", label: "🇬🇭", name: "Ghana" },
+  { code: "gr", label: "🇬🇷", name: "Greece" },
+  { code: "gt", label: "🇬🇹", name: "Guatemala" },
+
+  { code: "hn", label: "🇭🇳", name: "Honduras" },
+  { code: "hu", label: "🇭🇺", name: "Hungary" },
+
+  { code: "in", label: "🇮🇳", name: "India" },
+  { code: "id", label: "🇮🇩", name: "Indonesia" },
+  { code: "ir", label: "🇮🇷", name: "Iran" },
+  { code: "iq", label: "🇮🇶", name: "Iraq" },
+  { code: "ie", label: "🇮🇪", name: "Ireland" },
+  { code: "il", label: "🇮🇱", name: "Israel" },
   { code: "it", label: "🇮🇹", name: "Italy" },
+
+  { code: "jp", label: "🇯🇵", name: "Japan" },
+
+  { code: "ke", label: "🇰🇪", name: "Kenya" },
+  { code: "kr", label: "🇰🇷", name: "South Korea" },
+  { code: "kw", label: "🇰🇼", name: "Kuwait" },
+
+  { code: "la", label: "🇱🇦", name: "Laos" },
+  { code: "lv", label: "🇱🇻", name: "Latvia" },
+  { code: "lb", label: "🇱🇧", name: "Lebanon" },
+
+  { code: "mx", label: "🇲🇽", name: "Mexico" },
+  { code: "ma", label: "🇲🇦", name: "Morocco" },
+
   { code: "nl", label: "🇳🇱", name: "Netherlands" },
+  { code: "nz", label: "🇳🇿", name: "New Zealand" },
+  { code: "ng", label: "🇳🇬", name: "Nigeria" },
+  { code: "no", label: "🇳🇴", name: "Norway" },
+
+  { code: "pk", label: "🇵🇰", name: "Pakistan" },
+  { code: "pa", label: "🇵🇦", name: "Panama" },
+  { code: "pe", label: "🇵🇪", name: "Peru" },
+  { code: "ph", label: "🇵🇭", name: "Philippines" },
+  { code: "pl", label: "🇵🇱", name: "Poland" },
+  { code: "pt", label: "🇵🇹", name: "Portugal" },
+
+  { code: "qa", label: "🇶🇦", name: "Qatar" },
+
+  { code: "ro", label: "🇷🇴", name: "Romania" },
   { code: "ru", label: "🇷🇺", name: "Russia" },
+
+  { code: "sa", label: "🇸🇦", name: "Saudi Arabia" },
+  { code: "sn", label: "🇸🇳", name: "Senegal" },
+  { code: "rs", label: "🇷🇸", name: "Serbia" },
+  { code: "sg", label: "🇸🇬", name: "Singapore" },
+  { code: "za", label: "🇿🇦", name: "South Africa" },
+  { code: "es", label: "🇪🇸", name: "Spain" },
+  { code: "se", label: "🇸🇪", name: "Sweden" },
+  { code: "ch", label: "🇨🇭", name: "Switzerland" },
+
+  { code: "th", label: "🇹🇭", name: "Thailand" },
+  { code: "tr", label: "🇹🇷", name: "Turkey" },
+
+  { code: "ua", label: "🇺🇦", name: "Ukraine" },
+  { code: "ae", label: "🇦🇪", name: "United Arab Emirates" },
+  { code: "gb", label: "🇬🇧", name: "United Kingdom" },
+  { code: "us", label: "🇺🇸", name: "United States" },
+  { code: "uy", label: "🇺🇾", name: "Uruguay" },
+
+  { code: "ve", label: "🇻🇪", name: "Venezuela" },
+  { code: "vn", label: "🇻🇳", name: "Vietnam" },
+
+  { code: "zw", label: "🇿🇼", name: "Zimbabwe" }
 ];
 
 /* ===================== ERROR SUPPRESSION ===================== */
