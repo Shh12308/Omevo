@@ -1,52 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
 export default function AuthCallBack() {
-  const [status, setStatus] = useState("Logging you in...");
+  const navigate = useNavigate();
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+
+    if (!token) {
+      console.error("Missing token in callback URL");
+      navigate("/");
+      return;
+    }
+
     try {
-      const params = new URLSearchParams(window.location.search);
-      const token = params.get("token");
-
-      if (!token) {
-        setStatus("Missing token, redirecting...");
-        setTimeout(() => {
-          window.location.href = "/login";
-        }, 1000);
-        return;
-      }
-
-      // Store token
       localStorage.setItem("token", token);
-
-      setStatus("Success! Redirecting...");
-
-      // Small delay so user sees success state
-      setTimeout(() => {
-        window.location.href = "/dashboard";
-      }, 800);
-
+      console.log("Token saved");
+      navigate("/video");
     } catch (err) {
       console.error("Auth callback error:", err);
-      setStatus("Something went wrong, redirecting...");
-
-      setTimeout(() => {
-        window.location.href = "/login";
-      }, 1200);
+      navigate("/");
     }
-  }, []);
+  }, [navigate]);
 
-  return (
-    <div style={{
-      display: "flex",
-      height: "100vh",
-      alignItems: "center",
-      justifyContent: "center",
-      flexDirection: "column",
-      fontFamily: "Arial"
-    }}>
-      <h2>🔐 Authentication</h2>
-      <p>{status}</p>
-    </div>
-  );
+  return <div>Signing you in...</div>;
 }
