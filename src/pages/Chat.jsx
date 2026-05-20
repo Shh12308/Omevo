@@ -522,7 +522,7 @@ const OmevoChat = () => {
     setMessages([]);
 
     try {
-      const r = await fetch(CONFIG.BACKEND + '/queue/enqueue', {
+      const r = await fetch(BACKEND + '/queue/enqueue', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json', 
