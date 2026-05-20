@@ -1,49 +1,52 @@
-import { useEffect } from "react";
-import { BACKEND } from "../utils/api";
+import { useEffect, useState } from "react";
 
-export default function AuthCallBack() {
+export default function AuthCallback() {
+  const [status, setStatus] = useState("Logging you in...");
+
   useEffect(() => {
-    const run = async () => {
-      try {
-        const params = new URLSearchParams(window.location.search);
-        const token = params.get("token");
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get("token");
 
-        if (!token) {
-          window.location.replace("/");
-          return;
-        }
-
-        // Store token
-        localStorage.setItem("token", token);
-
-        // Validate token with backend
-        const res = await fetch(`${BACKEND}/auth/me`, {
-          method: "GET",
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
-
-        if (!res.ok) {
-          throw new Error("Invalid token");
-        }
-
-        // Optional: parse user data if needed
-        // const data = await res.json();
-
-        // Redirect immediately (no need for setTimeout)
-        window.location.replace("/video");
-
-      } catch (err) {
-        console.error("Auth callback error:", err);
-        localStorage.removeItem("token");
-        window.location.replace("/");
+      if (!token) {
+        setStatus("Missing token, redirecting...");
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 1000);
+        return;
       }
-    };
 
-    run();
+      // Store token
+      localStorage.setItem("token", token);
+
+      setStatus("Success! Redirecting...");
+
+      // Small delay so user sees success state
+      setTimeout(() => {
+        window.location.href = "/dashboard";
+      }, 800);
+
+    } catch (err) {
+      console.error("Auth callback error:", err);
+      setStatus("Something went wrong, redirecting...");
+
+      setTimeout(() => {
+        window.location.href = "/login";
+      }, 1200);
+    }
   }, []);
 
-  return <div>Logging you in...</div>;
+  return (
+    <div style={{
+      display: "flex",
+      height: "100vh",
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "column",
+      fontFamily: "Arial"
+    }}>
+      <h2>🔐 Authentication</h2>
+      <p>{status}</p>
+    </div>
+  );
 }
