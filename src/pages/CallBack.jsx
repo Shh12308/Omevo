@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-export default function AuthCallback() {
+export default function AuthCallBack() {
   const [status, setStatus] = useState("Logging you in...");
 
   useEffect(() => {
