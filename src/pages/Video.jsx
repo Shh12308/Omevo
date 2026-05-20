@@ -13,6 +13,26 @@ const CONFIG = {
   TRACK_RECOVERY_DELAY: 1000,
 };
 
+/* ===================== COUNTRY DATA ===================== */
+const COUNTRIES = [
+  { code: "any", label: "🌍", name: "Worldwide" },
+  { code: "nearby", label: "📍", name: "Nearby" },
+  { code: "us", label: "🇺🇸", name: "USA" },
+  { code: "gb", label: "🇬🇧", name: "UK" },
+  { code: "ca", label: "🇨🇦", name: "Canada" },
+  { code: "au", label: "🇦🇺", name: "Australia" },
+  { code: "de", label: "🇩🇪", name: "Germany" },
+  { code: "fr", label: "🇫🇷", name: "France" },
+  { code: "in", label: "🇮🇳", name: "India" },
+  { code: "jp", label: "🇯🇵", name: "Japan" },
+  { code: "br", label: "🇧🇷", name: "Brazil" },
+  { code: "mx", label: "🇲🇽", name: "Mexico" },
+  { code: "es", label: "🇪🇸", name: "Spain" },
+  { code: "it", label: "🇮🇹", name: "Italy" },
+  { code: "nl", label: "🇳🇱", name: "Netherlands" },
+  { code: "ru", label: "🇷🇺", name: "Russia" },
+];
+
 /* ===================== ERROR SUPPRESSION ===================== */
 const suppressMediaErrors = () => {
   const originalError = console.error;
@@ -57,8 +77,136 @@ function getProviderInfo(provider) {
   }
 }
 
-/* ===================== COMPONENT ===================== */
+/* ===================== COUNTRY SCROLL COMPONENT ===================== */
+function CountryScroll({ value, onChange }) {
+  const scrollRef = useRef(null);
+
+  // Auto-center selected item
+  useEffect(() => {
+    const el = scrollRef.current?.querySelector('.country-chip.active');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+  }, [value]);
+
+  const select = (code) => {
+    if (navigator.vibrate) navigator.vibrate(10); // Haptic feedback
+    onChange(code);
+  };
+
+  return (
+    <div className="country-scroll-container">
+      <div className="country-scroll" ref={scrollRef}>
+        {COUNTRIES.map((c) => (
+          <button
+            key={c.code}
+            onClick={() => select(c.code)}
+            className={`country-chip ${value === c.code ? 'active' : ''}`}
+          >
+            <span className="country-emoji">{c.label}</span>
+            <span className="country-name">{c.name}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ===================== INJECTED CSS (PREMIUM UI) ===================== */
+const injectPremiumStyles = () => {
+  if (document.getElementById('premium-country-styles')) return;
+  const css = `
+    .country-scroll-container {
+      margin-top: 8px;
+      border-radius: 16px;
+      background: rgba(0,0,0,0.2);
+      padding: 4px;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .country-scroll {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding: 12px 10px;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none; /* Firefox */
+    }
+    .country-scroll::-webkit-scrollbar {
+      display: none;
+    }
+    /* Fade edges for premium look */
+    .country-scroll-container {
+      mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+      -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+    }
+    .country-chip {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 16px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: white;
+      font-size: 12px;
+      backdrop-filter: blur(12px);
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      scroll-snap-align: center;
+      cursor: pointer;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .country-chip:hover {
+      transform: translateY(-2px);
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255,255,255,0.2);
+    }
+    .country-chip.active {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border: none;
+      box-shadow: 0 0 20px rgba(99, 102, 241, 0.5);
+      transform: translateY(-2px) scale(1.05);
+      color: white;
+    }
+    .country-emoji {
+      font-size: 20px;
+      transition: transform 0.2s;
+    }
+    .country-chip:active .country-emoji {
+      transform: scale(1.2);
+    }
+    .country-name {
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      opacity: 0.9;
+    }
+    .country-chip.active .country-name {
+      opacity: 1;
+    }
+    /* Make the first child (Worldwide) slightly special */
+    .country-chip:first-child {
+      background: rgba(255,255,255,0.08);
+    }
+    .country-chip:first-child.active {
+      background: linear-gradient(135deg, #10b981, #059669);
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
+    }
+  `;
+  const style = document.createElement('style');
+  style.id = 'premium-country-styles';
+  style.innerHTML = css;
+  document.head.appendChild(style);
+};
+
+/* ===================== MAIN COMPONENT ===================== */
 export default function Video() {
+  // Inject styles on load
+  useEffect(() => {
+    injectPremiumStyles();
+  }, []);
+
   /* ---------- token ---------- */
   const [token, setToken] = useState(() => {
     const p = new URLSearchParams(window.location.search);
@@ -109,7 +257,8 @@ export default function Video() {
   /* ---------- form state ---------- */
   const [genderSelect, setGenderSelect] = useState('male');
   const [lookingFor, setLookingFor] = useState('any');
-  const [locationSelect, setLocationSelect] = useState('any');
+  // UPDATED: Default to 'any' (Worldwide) to match new UI
+  const [locationSelect, setLocationSelect] = useState('any'); 
   const [interestsInput, setInterestsInput] = useState('');
   const [editName, setEditName] = useState('');
   const [appealText, setAppealText] = useState('');
@@ -449,7 +598,7 @@ export default function Video() {
     isMatchingRef.current = true;
     setShowBlurOverlay(true);
     try {
-      const payload = { gender: preferencesRef.current.gender, looking_for: preferencesRef.current.looking_for, location: preferencesRef.current.location, interests: preferencesRef.current.interests, nickname: (user && (user.username || user.nickname)) || 'User' };
+      const payload = { gender: preferencesRef.current.gender, looking_for: preferencesRef.current.looking_for, location: locationSelect, interests: preferencesRef.current.interests, nickname: (user && (user.username || user.nickname)) || 'User' };
       const r = await safeFetch(CONFIG.BACKEND + '/queue/enqueue', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current }, body: JSON.stringify(payload) });
       if (!r.ok) { const e = await r.json().catch(() => ({ error: 'Enqueue failed' })); throw new Error(e.error || 'Enqueue failed'); }
       const d = await r.json();
@@ -728,22 +877,10 @@ export default function Video() {
   /* ===================== SOCKET ===================== */
   useEffect(() => {
     if (!tokenRef.current) return;
-
-    // FIX: Pass token in auth during handshake
-    const socket = io(CONFIG.BACKEND, {
-      auth: { token: tokenRef.current }
-    });
-
+    const socket = io(CONFIG.BACKEND, { auth: { token: tokenRef.current } });
     socketRef.current = socket;
-
-    socket.on('connect', () => {
-      console.log('Socket connected');
-    });
-
-    socket.on('authenticated', () => {
-      console.log('Socket authenticated');
-    });
-
+    socket.on('connect', () => {});
+    socket.on('authenticated', () => {});
     socket.on('disconnect', () => {});
     socket.on('match_found', (d) => {
       if (isMatchingRef.current && !isInCallRef.current) {
@@ -761,7 +898,6 @@ export default function Video() {
     socket.on('report_submitted', (d) => addToastRef.current(d.message || 'Report submitted', 'success'));
     socket.on('typing', (d) => { if (d.uid && userIdRef.current && String(d.uid) !== String(userIdRef.current)) { setShowTyping(true); setTimeout(() => setShowTyping(false), 3000); } });
     socket.on('error', (d) => { if (d.message) addToastRef.current(d.message, 'error'); });
-
     return () => { socket.disconnect(); socketRef.current = null; };
   }, [addMsgToChat, triggerGiftAnimation]);
 
@@ -1073,7 +1209,7 @@ export default function Video() {
         </div>
       </div>
 
-      {/* SETTINGS PANEL */}
+      {/* SETTINGS PANEL - UPDATED WITH COUNTRY SCROLL */}
       <div className={`side-panel left ${showSettings ? 'open' : ''}`} role="dialog" aria-label="Settings">
         <div className="panel-header">
           <h2>Settings</h2>
@@ -1082,7 +1218,13 @@ export default function Video() {
         <div className="panel-content">
           <div className="form-group"><label>I am</label><select className="form-control" value={genderSelect} onChange={e => setGenderSelect(e.target.value)}><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div>
           <div className="form-group"><label>Looking for</label><select className="form-control" value={lookingFor} onChange={e => setLookingFor(e.target.value)}><option value="any">Anyone</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div>
-          <div className="form-group"><label>Location</label><select className="form-control" value={locationSelect} onChange={e => setLocationSelect(e.target.value)}><option value="any">Anywhere</option><option value="nearby">Nearby</option><option value="us">United States</option><option value="europe">Europe</option><option value="asia">Asia</option><option value="uk">United Kingdom</option></select></div>
+          
+          {/* REPLACED LOCATION SELECTOR WITH PREMIUM SCROLL */}
+          <div className="form-group">
+            <label>Location</label>
+            <CountryScroll value={locationSelect} onChange={setLocationSelect} />
+          </div>
+
           <div className="form-group"><label>Interests (comma separated, max 5)</label><input type="text" className="form-control" value={interestsInput} onChange={e => setInterestsInput(e.target.value)} placeholder="Music, Gaming, Sports..." /></div>
           <button className="btn btn-primary" onClick={saveSettings} style={{ width: '100%' }}>Save Settings</button>
         </div>
