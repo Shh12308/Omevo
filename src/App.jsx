@@ -6,7 +6,6 @@ import Chat from './pages/Chat';
 import Terms from './pages/Terms';
 import AuthCallBack from './pages/CallBack';
 import NotFound from './pages/NotFound';
-import PrivateRoute from './components/PrivateRoute'; // Import the guard
 
 function App() {
   return (
@@ -20,10 +19,10 @@ function App() {
         <Route path="/auth/callback" element={<AuthCallBack />} />
 
         {/* Protected Routes (Requires Token) */}
-        <Route element={<PrivateRoute />}>
+        
           <Route path="/video" element={<Video />} />
           <Route path="/chat" element={<Chat />} />
-        </Route>
+        
 
         {/* Fallback */}
         <Route path="*" element={<NotFound />} />
