@@ -413,7 +413,7 @@ const OmevoChat = () => {
 
   // -- SOCKET SETUP --
   useEffect(() => {
-    socketRef.current = io(CONFIG.BACKEND, {
+    socketRef.current = io(BACKEND, {
       transports: ["websocket"]
     });
 
