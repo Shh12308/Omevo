@@ -4,7 +4,7 @@ import "./Video.css";
 
 /* ===================== CONFIGURATION ===================== */
 const CONFIG = {
-  BACKEND: 'https://term-production-bf65.up.railway.app',
+  BACKEND: 'https://api.omevo.online',
   AGORA_APP_ID: '0f9094ed4a8e4dea934059b0ea8b5182',
   STRIPE_PUBLISHABLE_KEY: 'pk_test_your_stripe_key_here', // Still needed for buying coins
   DEBUG_MODE: false,
