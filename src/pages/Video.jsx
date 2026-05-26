@@ -6,7 +6,7 @@ import "./Video.css";
 const CONFIG = {
   BACKEND: 'https://term-production-bf65.up.railway.app',
   AGORA_APP_ID: '0f9094ed4a8e4dea934059b0ea8b5182',
-  STRIPE_PUBLISHABLE_KEY: 'pk_test_your_stripe_key_here',
+  STRIPE_PUBLISHABLE_KEY: 'pk_test_your_stripe_key_here', // Still needed for buying coins
   DEBUG_MODE: false,
   MODERATION_INTERVAL: 2000,
   HEARTBEAT_INTERVAL: 5000,
@@ -841,7 +841,8 @@ export default function Video() {
     doEndCallRef.current();
   };
 
-  const sendGift = async (type, cost) => {
+  /* ===================== UPDATED: SEND GIFT (COINS) ===================== */
+  const sendGift = async (type, costInCoins) => {
     if (!partnerIdRef.current) { addToast('No partner', 'error'); setShowGifts(false); return; }
     try {
       const r = await safeFetch(CONFIG.BACKEND + '/api/create-gift-checkout', {
@@ -850,13 +851,27 @@ export default function Video() {
         body: JSON.stringify({ giftType: type, recipientId: partnerIdRef.current }),
       });
       const d = await r.json();
-      if (d.url) {
-        window.open(d.url, '_blank');
+      
+      if (d.success) {
+        // Success: Deduct coins locally and show animation
+        setUserCoins(prev => Math.max(0, prev - costInCoins));
         triggerGiftAnimation(type);
         setShowGifts(false);
-        addToast('Opening payment...', 'info');
-      } else throw new Error(d.error || 'Failed');
-    } catch (e) { addToast(e.message || 'Failed', 'error'); setShowGifts(false); }
+        addToast('Gift sent!', 'success');
+      } else {
+        // Error handling
+        if (d.code === 'INSUFFICIENT_FUNDS') {
+          addToast('Not enough coins', 'error');
+          setShowGifts(false); // Close gift modal
+          setShowPayment(true); // Open coin purchase modal
+        } else {
+          throw new Error(d.error || 'Failed to send gift');
+        }
+      }
+    } catch (e) { 
+      addToast(e.message || 'Failed', 'error'); 
+      setShowGifts(false); 
+    }
   };
 
   const initiateUnbanPayment = async () => {
@@ -1429,17 +1444,25 @@ export default function Video() {
         </div>
       )}
 
+      {/* UPDATED: GIFT MODAL */}
       {showGifts && (
         <div className="modal-overlay active" onClick={() => setShowGifts(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header"><h3>Send a Gift</h3><button className="control-btn" onClick={() => setShowGifts(false)} aria-label="Close"><i className="fas fa-times" /></button></div>
-            <div className="gift-info-note"><i className="fas fa-info-circle" /> Gifts are paid via Stripe. Your partner will see a special animation!</div>
+            <div className="gift-info-note"><i className="fas fa-coins" style={{color: '#fbbf24'}} /> Spend your coins to send a virtual gift!</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 15, padding: 20 }}>
-              {[['rose', 2.99, '🌹', 'Rose'], ['heart', 3.99, '❤️', 'Heart'], ['star', 4.99, '⭐', 'Star'], ['diamond', 9.99, '💎', 'Diamond'], ['crown', 14.99, '👑', 'Crown'], ['rocket', 19.99, '🚀', 'Rocket']].map(([type, price, emoji, label]) => (
-                <button key={type} className="gift-btn" onClick={() => sendGift(type, price)} style={{ padding: 20, background: 'var(--dark)', border: '2px solid transparent', borderRadius: 12, cursor: 'pointer', transition: 'all 0.2s' }}>
+              {[
+                ['rose', 10, '🌹', 'Rose'], 
+                ['heart', 25, '❤️', 'Heart'], 
+                ['star', 50, '⭐', 'Star'], 
+                ['diamond', 100, '💎', 'Diamond'], 
+                ['crown', 200, '👑', 'Crown'], 
+                ['rocket', 500, '🚀', 'Rocket']
+              ].map(([type, coinCost, emoji, label]) => (
+                <button key={type} className="gift-btn" onClick={() => sendGift(type, coinCost)} style={{ padding: 20, background: 'var(--dark)', border: '2px solid transparent', borderRadius: 12, cursor: 'pointer', transition: 'all 0.2s' }}>
                   <div style={{ fontSize: '2.5rem', marginBottom: 5 }}>{emoji}</div>
                   <div style={{ fontWeight: 600 }}>{label}</div>
-                  <div style={{ color: 'var(--primary)', fontSize: '0.9rem', fontWeight: 700 }}>${price}</div>
+                  <div style={{ color: '#fbbf24', fontSize: '0.9rem', fontWeight: 700 }}>{coinCost} 🪙</div>
                 </button>
               ))}
             </div>
