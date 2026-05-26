@@ -4,9 +4,9 @@ import "./Video.css";
 
 /* ===================== CONFIGURATION ===================== */
 const CONFIG = {
-  BACKEND: 'https://api.omevo.online',
+  BACKEND: 'https://term-production-bf65.up.railway.app',
   AGORA_APP_ID: '0f9094ed4a8e4dea934059b0ea8b5182',
-  STRIPE_PUBLISHABLE_KEY: 'pk_test_your_stripe_key_here', // Still needed for buying coins
+  STRIPE_PUBLISHABLE_KEY: 'pk_test_your_stripe_key_here',
   DEBUG_MODE: false,
   MODERATION_INTERVAL: 2000,
   HEARTBEAT_INTERVAL: 5000,
@@ -17,142 +17,66 @@ const CONFIG = {
 export const COUNTRIES = [
   { code: "any", label: "🌍", name: "Worldwide" },
   { code: "nearby", label: "📍", name: "Nearby" },
-
-  { code: "af", label: "🇦🇫", name: "Afghanistan" },
-  { code: "al", label: "🇦🇱", name: "Albania" },
-  { code: "dz", label: "🇩🇿", name: "Algeria" },
-  { code: "ad", label: "🇦🇩", name: "Andorra" },
-  { code: "ao", label: "🇦🇴", name: "Angola" },
-  { code: "ar", label: "🇦🇷", name: "Argentina" },
-  { code: "am", label: "🇦🇲", name: "Armenia" },
-  { code: "au", label: "🇦🇺", name: "Australia" },
-  { code: "at", label: "🇦🇹", name: "Austria" },
-  { code: "az", label: "🇦🇿", name: "Azerbaijan" },
-
-  { code: "bs", label: "🇧🇸", name: "Bahamas" },
-  { code: "bh", label: "🇧🇭", name: "Bahrain" },
-  { code: "bd", label: "🇧🇩", name: "Bangladesh" },
-  { code: "bb", label: "🇧🇧", name: "Barbados" },
-  { code: "by", label: "🇧🇾", name: "Belarus" },
-  { code: "be", label: "🇧🇪", name: "Belgium" },
-  { code: "bz", label: "🇧🇿", name: "Belize" },
-  { code: "bj", label: "🇧🇯", name: "Benin" },
-  { code: "bt", label: "🇧🇹", name: "Bhutan" },
-  { code: "bo", label: "🇧🇴", name: "Bolivia" },
-  { code: "ba", label: "🇧🇦", name: "Bosnia & Herzegovina" },
-  { code: "bw", label: "🇧🇼", name: "Botswana" },
-  { code: "br", label: "🇧🇷", name: "Brazil" },
-  { code: "bn", label: "🇧🇳", name: "Brunei" },
-  { code: "bg", label: "🇧🇬", name: "Bulgaria" },
-  { code: "bf", label: "🇧🇫", name: "Burkina Faso" },
-  { code: "bi", label: "🇧🇮", name: "Burundi" },
-
-  { code: "kh", label: "🇰🇭", name: "Cambodia" },
-  { code: "cm", label: "🇨🇲", name: "Cameroon" },
-  { code: "ca", label: "🇨🇦", name: "Canada" },
-  { code: "cv", label: "🇨🇻", name: "Cape Verde" },
-  { code: "cf", label: "🇨🇫", name: "Central African Republic" },
-  { code: "td", label: "🇹🇩", name: "Chad" },
-  { code: "cl", label: "🇨🇱", name: "Chile" },
-  { code: "cn", label: "🇨🇳", name: "China" },
-  { code: "co", label: "🇨🇴", name: "Colombia" },
-  { code: "km", label: "🇰🇲", name: "Comoros" },
-  { code: "cg", label: "🇨🇬", name: "Congo" },
-  { code: "cr", label: "🇨🇷", name: "Costa Rica" },
-  { code: "hr", label: "🇭🇷", name: "Croatia" },
-  { code: "cu", label: "🇨🇺", name: "Cuba" },
-  { code: "cy", label: "🇨🇾", name: "Cyprus" },
-  { code: "cz", label: "🇨🇿", name: "Czechia" },
-
-  { code: "dk", label: "🇩🇰", name: "Denmark" },
-  { code: "dj", label: "🇩🇯", name: "Djibouti" },
-  { code: "dm", label: "🇩🇲", name: "Dominica" },
-  { code: "do", label: "🇩🇴", name: "Dominican Republic" },
-
-  { code: "ec", label: "🇪🇨", name: "Ecuador" },
-  { code: "eg", label: "🇪🇬", name: "Egypt" },
-  { code: "sv", label: "🇸🇻", name: "El Salvador" },
-  { code: "ee", label: "🇪🇪", name: "Estonia" },
-  { code: "et", label: "🇪🇹", name: "Ethiopia" },
-
-  { code: "fj", label: "🇫🇯", name: "Fiji" },
-  { code: "fi", label: "🇫🇮", name: "Finland" },
-  { code: "fr", label: "🇫🇷", name: "France" },
-
-  { code: "de", label: "🇩🇪", name: "Germany" },
-  { code: "gh", label: "🇬🇭", name: "Ghana" },
-  { code: "gr", label: "🇬🇷", name: "Greece" },
-  { code: "gt", label: "🇬🇹", name: "Guatemala" },
-
-  { code: "hn", label: "🇭🇳", name: "Honduras" },
-  { code: "hu", label: "🇭🇺", name: "Hungary" },
-
-  { code: "in", label: "🇮🇳", name: "India" },
-  { code: "id", label: "🇮🇩", name: "Indonesia" },
-  { code: "ir", label: "🇮🇷", name: "Iran" },
-  { code: "iq", label: "🇮🇶", name: "Iraq" },
-  { code: "ie", label: "🇮🇪", name: "Ireland" },
-  { code: "il", label: "🇮🇱", name: "Israel" },
-  { code: "it", label: "🇮🇹", name: "Italy" },
-
-  { code: "jp", label: "🇯🇵", name: "Japan" },
-
-  { code: "ke", label: "🇰🇪", name: "Kenya" },
-  { code: "kr", label: "🇰🇷", name: "South Korea" },
-  { code: "kw", label: "🇰🇼", name: "Kuwait" },
-
-  { code: "la", label: "🇱🇦", name: "Laos" },
-  { code: "lv", label: "🇱🇻", name: "Latvia" },
-  { code: "lb", label: "🇱🇧", name: "Lebanon" },
-
-  { code: "mx", label: "🇲🇽", name: "Mexico" },
-  { code: "ma", label: "🇲🇦", name: "Morocco" },
-
-  { code: "nl", label: "🇳🇱", name: "Netherlands" },
-  { code: "nz", label: "🇳🇿", name: "New Zealand" },
-  { code: "ng", label: "🇳🇬", name: "Nigeria" },
-  { code: "no", label: "🇳🇴", name: "Norway" },
-
-  { code: "pk", label: "🇵🇰", name: "Pakistan" },
-  { code: "pa", label: "🇵🇦", name: "Panama" },
-  { code: "pe", label: "🇵🇪", name: "Peru" },
-  { code: "ph", label: "🇵🇭", name: "Philippines" },
-  { code: "pl", label: "🇵🇱", name: "Poland" },
-  { code: "pt", label: "🇵🇹", name: "Portugal" },
-
-  { code: "qa", label: "🇶🇦", name: "Qatar" },
-
-  { code: "ro", label: "🇷🇴", name: "Romania" },
-  { code: "ru", label: "🇷🇺", name: "Russia" },
-
-  { code: "sa", label: "🇸🇦", name: "Saudi Arabia" },
-  { code: "sn", label: "🇸🇳", name: "Senegal" },
-  { code: "rs", label: "🇷🇸", name: "Serbia" },
-  { code: "sg", label: "🇸🇬", name: "Singapore" },
-  { code: "za", label: "🇿🇦", name: "South Africa" },
-  { code: "es", label: "🇪🇸", name: "Spain" },
-  { code: "se", label: "🇸🇪", name: "Sweden" },
-  { code: "ch", label: "🇨🇭", name: "Switzerland" },
-
-  { code: "th", label: "🇹🇭", name: "Thailand" },
-  { code: "tr", label: "🇹🇷", name: "Turkey" },
-
-  { code: "ua", label: "🇺🇦", name: "Ukraine" },
-  { code: "ae", label: "🇦🇪", name: "United Arab Emirates" },
-  { code: "gb", label: "🇬🇧", name: "United Kingdom" },
-  { code: "us", label: "🇺🇸", name: "United States" },
-  { code: "uy", label: "🇺🇾", name: "Uruguay" },
-
-  { code: "ve", label: "🇻🇪", name: "Venezuela" },
-  { code: "vn", label: "🇻🇳", name: "Vietnam" },
-
-  { code: "zw", label: "🇿🇼", name: "Zimbabwe" }
+  { code: "af", label: "🇦🇫", name: "Afghanistan" }, { code: "al", label: "🇦🇱", name: "Albania" },
+  { code: "dz", label: "🇩🇿", name: "Algeria" }, { code: "ad", label: "🇦🇩", name: "Andorra" },
+  { code: "ao", label: "🇦🇴", name: "Angola" }, { code: "ar", label: "🇦🇷", name: "Argentina" },
+  { code: "am", label: "🇦🇲", name: "Armenia" }, { code: "au", label: "🇦🇺", name: "Australia" },
+  { code: "at", label: "🇦🇹", name: "Austria" }, { code: "az", label: "🇦🇿", name: "Azerbaijan" },
+  { code: "bs", label: "🇧🇸", name: "Bahamas" }, { code: "bh", label: "🇧🇭", name: "Bahrain" },
+  { code: "bd", label: "🇧🇩", name: "Bangladesh" }, { code: "bb", label: "🇧🇧", name: "Barbados" },
+  { code: "by", label: "🇧🇾", name: "Belarus" }, { code: "be", label: "🇧🇪", name: "Belgium" },
+  { code: "bz", label: "🇧🇿", name: "Belize" }, { code: "bj", label: "🇧🇯", name: "Benin" },
+  { code: "bt", label: "🇧🇹", name: "Bhutan" }, { code: "bo", label: "🇧🇴", name: "Bolivia" },
+  { code: "ba", label: "🇧🇦", name: "Bosnia & Herzegovina" }, { code: "bw", label: "🇧🇼", name: "Botswana" },
+  { code: "br", label: "🇧🇷", name: "Brazil" }, { code: "bn", label: "🇧🇳", name: "Brunei" },
+  { code: "bg", label: "🇧🇬", name: "Bulgaria" }, { code: "bf", label: "🇧🇫", name: "Burkina Faso" },
+  { code: "bi", label: "🇧🇮", name: "Burundi" }, { code: "kh", label: "🇰🇭", name: "Cambodia" },
+  { code: "cm", label: "🇨🇲", name: "Cameroon" }, { code: "ca", label: "🇨🇦", name: "Canada" },
+  { code: "cv", label: "🇨🇻", name: "Cape Verde" }, { code: "cf", label: "🇨🇫", name: "Central African Republic" },
+  { code: "td", label: "🇹🇩", name: "Chad" }, { code: "cl", label: "🇨🇱", name: "Chile" },
+  { code: "cn", label: "🇨🇳", name: "China" }, { code: "co", label: "🇨🇴", name: "Colombia" },
+  { code: "km", label: "🇰🇲", name: "Comoros" }, { code: "cg", label: "🇨🇬", name: "Congo" },
+  { code: "cr", label: "🇨🇷", name: "Costa Rica" }, { code: "hr", label: "🇭🇷", name: "Croatia" },
+  { code: "cu", label: "🇨🇺", name: "Cuba" }, { code: "cy", label: "🇨🇾", name: "Cyprus" },
+  { code: "cz", label: "🇨🇿", name: "Czechia" }, { code: "dk", label: "🇩🇰", name: "Denmark" },
+  { code: "dj", label: "🇩🇯", name: "Djibouti" }, { code: "dm", label: "🇩🇲", name: "Dominica" },
+  { code: "do", label: "🇩🇴", name: "Dominican Republic" }, { code: "ec", label: "🇪🇨", name: "Ecuador" },
+  { code: "eg", label: "🇪🇬", name: "Egypt" }, { code: "sv", label: "🇸🇻", name: "El Salvador" },
+  { code: "ee", label: "🇪🇪", name: "Estonia" }, { code: "et", label: "🇪🇹", name: "Ethiopia" },
+  { code: "fj", label: "🇫🇯", name: "Fiji" }, { code: "fi", label: "🇫🇮", name: "Finland" },
+  { code: "fr", label: "🇫🇷", name: "France" }, { code: "de", label: "🇩🇪", name: "Germany" },
+  { code: "gh", label: "🇬🇭", name: "Ghana" }, { code: "gr", label: "🇬🇷", name: "Greece" },
+  { code: "gt", label: "🇬🇹", name: "Guatemala" }, { code: "hn", label: "🇭🇳", name: "Honduras" },
+  { code: "hu", label: "🇭🇺", name: "Hungary" }, { code: "in", label: "🇮🇳", name: "India" },
+  { code: "id", label: "🇮🇩", name: "Indonesia" }, { code: "ir", label: "🇮🇷", name: "Iran" },
+  { code: "iq", label: "🇮🇶", name: "Iraq" }, { code: "ie", label: "🇮🇪", name: "Ireland" },
+  { code: "il", label: "🇮🇱", name: "Israel" }, { code: "it", label: "🇮🇹", name: "Italy" },
+  { code: "jp", label: "🇯🇵", name: "Japan" }, { code: "ke", label: "🇰🇪", name: "Kenya" },
+  { code: "kr", label: "🇰🇷", name: "South Korea" }, { code: "kw", label: "🇰🇼", name: "Kuwait" },
+  { code: "la", label: "🇱🇦", name: "Laos" }, { code: "lv", label: "🇱🇻", name: "Latvia" },
+  { code: "lb", label: "🇱🇧", name: "Lebanon" }, { code: "mx", label: "🇲🇽", name: "Mexico" },
+  { code: "ma", label: "🇲🇦", name: "Morocco" }, { code: "nl", label: "🇳🇱", name: "Netherlands" },
+  { code: "nz", label: "🇳🇿", name: "New Zealand" }, { code: "ng", label: "🇳🇬", name: "Nigeria" },
+  { code: "no", label: "🇳🇴", name: "Norway" }, { code: "pk", label: "🇵🇰", name: "Pakistan" },
+  { code: "pa", label: "🇵🇦", name: "Panama" }, { code: "pe", label: "🇵🇪", name: "Peru" },
+  { code: "ph", label: "🇵🇭", name: "Philippines" }, { code: "pl", label: "🇵🇱", name: "Poland" },
+  { code: "pt", label: "🇵🇹", name: "Portugal" }, { code: "qa", label: "🇶🇦", name: "Qatar" },
+  { code: "ro", label: "🇷🇴", name: "Romania" }, { code: "ru", label: "🇷🇺", name: "Russia" },
+  { code: "sa", label: "🇸🇦", name: "Saudi Arabia" }, { code: "sn", label: "🇸🇳", name: "Senegal" },
+  { code: "rs", label: "🇷🇸", name: "Serbia" }, { code: "sg", label: "🇸🇬", name: "Singapore" },
+  { code: "za", label: "🇿🇦", name: "South Africa" }, { code: "es", label: "🇪🇸", name: "Spain" },
+  { code: "se", label: "🇸🇪", name: "Sweden" }, { code: "ch", label: "🇨🇭", name: "Switzerland" },
+  { code: "th", label: "🇹🇭", name: "Thailand" }, { code: "tr", label: "🇹🇷", name: "Turkey" },
+  { code: "ua", label: "🇺🇦", name: "Ukraine" }, { code: "ae", label: "🇦🇪", name: "United Arab Emirates" },
+  { code: "gb", label: "🇬🇧", name: "United Kingdom" }, { code: "us", label: "🇺🇸", name: "United States" },
+  { code: "uy", label: "🇺🇾", name: "Uruguay" }, { code: "ve", label: "🇻🇪", name: "Venezuela" },
+  { code: "vn", label: "🇻🇳", name: "Vietnam" }, { code: "zw", label: "🇿🇼", name: "Zimbabwe" }
 ];
 
 /* ===================== ERROR SUPPRESSION ===================== */
 const suppressMediaErrors = () => {
   const originalError = console.error;
-  const suppressedPatterns = ['Load failed', 'The play() request was interrupted', 'AbortError', 'NotAllowedError', 'insertSync'];
+  const suppressedPatterns = ['Load failed', 'The play() request was interrupted', 'AbortError', 'insertSync'];
   console.error = function(...args) {
     const msg = args.map(a => typeof a === 'string' ? a : '').join(' ');
     if (!suppressedPatterns.some(p => msg.includes(p))) originalError.apply(console, args);
@@ -197,7 +121,6 @@ function getProviderInfo(provider) {
 function CountryScroll({ value, onChange }) {
   const scrollRef = useRef(null);
 
-  // Auto-center selected item
   useEffect(() => {
     const el = scrollRef.current?.querySelector('.country-chip.active');
     if (el) {
@@ -206,7 +129,7 @@ function CountryScroll({ value, onChange }) {
   }, [value]);
 
   const select = (code) => {
-    if (navigator.vibrate) navigator.vibrate(10); // Haptic feedback
+    if (navigator.vibrate) navigator.vibrate(10);
     onChange(code);
   };
 
@@ -246,12 +169,9 @@ const injectPremiumStyles = () => {
       padding: 12px 10px;
       scroll-snap-type: x mandatory;
       -webkit-overflow-scrolling: touch;
-      scrollbar-width: none; /* Firefox */
+      scrollbar-width: none;
     }
-    .country-scroll::-webkit-scrollbar {
-      display: none;
-    }
-    /* Fade edges for premium look */
+    .country-scroll::-webkit-scrollbar { display: none; }
     .country-scroll-container {
       mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
       -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
@@ -286,25 +206,11 @@ const injectPremiumStyles = () => {
       transform: translateY(-2px) scale(1.05);
       color: white;
     }
-    .country-emoji {
-      font-size: 20px;
-      transition: transform 0.2s;
-    }
-    .country-chip:active .country-emoji {
-      transform: scale(1.2);
-    }
-    .country-name {
-      font-weight: 600;
-      letter-spacing: 0.3px;
-      opacity: 0.9;
-    }
-    .country-chip.active .country-name {
-      opacity: 1;
-    }
-    /* Make the first child (Worldwide) slightly special */
-    .country-chip:first-child {
-      background: rgba(255,255,255,0.08);
-    }
+    .country-emoji { font-size: 20px; transition: transform 0.2s; }
+    .country-chip:active .country-emoji { transform: scale(1.2); }
+    .country-name { font-weight: 600; letter-spacing: 0.3px; opacity: 0.9; }
+    .country-chip.active .country-name { opacity: 1; }
+    .country-chip:first-child { background: rgba(255,255,255,0.08); }
     .country-chip:first-child.active {
       background: linear-gradient(135deg, #10b981, #059669);
       box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
@@ -318,10 +224,7 @@ const injectPremiumStyles = () => {
 
 /* ===================== MAIN COMPONENT ===================== */
 export default function Video() {
-  // Inject styles on load
-  useEffect(() => {
-    injectPremiumStyles();
-  }, []);
+  useEffect(() => { injectPremiumStyles(); }, []);
 
   /* ---------- token ---------- */
   const [token, setToken] = useState(() => {
@@ -373,8 +276,7 @@ export default function Video() {
   /* ---------- form state ---------- */
   const [genderSelect, setGenderSelect] = useState('male');
   const [lookingFor, setLookingFor] = useState('any');
-  // UPDATED: Default to 'any' (Worldwide) to match new UI
-  const [locationSelect, setLocationSelect] = useState('any'); 
+  const [locationSelect, setLocationSelect] = useState('any');
   const [interestsInput, setInterestsInput] = useState('');
   const [editName, setEditName] = useState('');
   const [appealText, setAppealText] = useState('');
@@ -632,8 +534,11 @@ export default function Video() {
     try {
       const AgoraRTC = window.AgoraRTC;
       if (!AgoraRTC) throw new Error('AgoraRTC not loaded');
+      
+      // Attempt to create tracks
       const audio = await AgoraRTC.createMicrophoneAudioTrack();
       const video = await AgoraRTC.createCameraVideoTrack({ encoderConfig: { width: 1280, height: 720, frameRate: 30, bitrate: 1710 } });
+      
       localTracksRef.current.audioTrack = audio;
       localTracksRef.current.videoTrack = video;
       video.play(localVideoDivRef.current);
@@ -643,7 +548,18 @@ export default function Video() {
       setLoading(false);
       try { const devices = await AgoraRTC.getDevices(); camerasRef.current = devices.filter(x => x.kind === 'videoinput'); } catch {}
       await initializeAfterAuth();
-    } catch (err) { addToast('Camera & microphone permission required', 'error'); }
+    } catch (err) {
+      console.error("Permission error:", err);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        addToast('Permission denied. Please allow camera access in your browser settings and refresh.', 'error');
+      } else if (err.name === 'NotFoundError') {
+        addToast('No camera or microphone found.', 'error');
+      } else if (err.name === 'NotReadableError') {
+        addToast('Camera might be in use by another app.', 'error');
+      } else {
+        addToast('Camera & microphone permission required', 'error');
+      }
+    }
     finally { setPermBtnLoading(false); }
   };
 
@@ -841,7 +757,6 @@ export default function Video() {
     doEndCallRef.current();
   };
 
-  /* ===================== UPDATED: SEND GIFT (COINS) ===================== */
   const sendGift = async (type, costInCoins) => {
     if (!partnerIdRef.current) { addToast('No partner', 'error'); setShowGifts(false); return; }
     try {
@@ -1340,7 +1255,7 @@ export default function Video() {
         </div>
       </div>
 
-      {/* SETTINGS PANEL - UPDATED WITH COUNTRY SCROLL */}
+      {/* SETTINGS PANEL */}
       <div className={`side-panel left ${showSettings ? 'open' : ''}`} role="dialog" aria-label="Settings">
         <div className="panel-header">
           <h2>Settings</h2>
@@ -1350,7 +1265,7 @@ export default function Video() {
           <div className="form-group"><label>I am</label><select className="form-control" value={genderSelect} onChange={e => setGenderSelect(e.target.value)}><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div>
           <div className="form-group"><label>Looking for</label><select className="form-control" value={lookingFor} onChange={e => setLookingFor(e.target.value)}><option value="any">Anyone</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div>
           
-          {/* REPLACED LOCATION SELECTOR WITH PREMIUM SCROLL */}
+          {/* LOCATION SCROLL */}
           <div className="form-group">
             <label>Location</label>
             <CountryScroll value={locationSelect} onChange={setLocationSelect} />
@@ -1444,7 +1359,6 @@ export default function Video() {
         </div>
       )}
 
-      {/* UPDATED: GIFT MODAL */}
       {showGifts && (
         <div className="modal-overlay active" onClick={() => setShowGifts(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
