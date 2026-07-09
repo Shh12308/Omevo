@@ -9,17 +9,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "18.2.0",
     "axios": "^1.6.5",
     "framer-motion": "^10.18.0",
+    "mediasoup-client": "^3.15.0",
+    "react": "18.2.0",
     "react-dom": "18.2.0",
     "react-router-dom": "6.20.0",
     "socket.io-client": "4.7.2"
   },
   "devDependencies": {
-  "@types/react": "18.2.37",
-  "@types/react-dom": "18.2.15",
-  "@vitejs/plugin-react": "4.3.4",
-  "vite": "6.3.5"
+    "@types/react": "18.2.37",
+    "@types/react-dom": "18.2.15",
+    "@vitejs/plugin-react": "4.3.4",
+    "vite": "6.3.5"
   }
 }
