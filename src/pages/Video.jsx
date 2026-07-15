@@ -11,9 +11,6 @@ const CONFIG = {
   MODERATION_INTERVAL: 2000,
   HEARTBEAT_INTERVAL: 5000,
   TRACK_RECOVERY_DELAY: 1000,
-  SESSION_REFRESH_INTERVAL: 15 * 60 * 1000, // 15 minutes
-  SESSION_MAX_AGE: 30 * 24 * 60 * 60 * 1000, // 30 days
-  TAB_AWAY_THRESHOLD: 5 * 60 * 1000, // 5 minutes
 };
 
 /* ===================== COUNTRY DATA ===================== */
@@ -229,43 +226,14 @@ const injectPremiumStyles = () => {
 export default function Video() {
   useEffect(() => { injectPremiumStyles(); }, []);
 
-  /* ---------- token with persistent session ---------- */
-  const [token, setTokenState] = useState(() => {
+  /* ---------- token ---------- */
+  const [token, setToken] = useState(() => {
     const p = new URLSearchParams(window.location.search);
     const t = p.get('token');
-    if (t) {
-      localStorage.setItem('token', t);
-      localStorage.setItem('tokenTimestamp', Date.now().toString());
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-    const storedToken = localStorage.getItem('token');
-    const timestamp = localStorage.getItem('tokenTimestamp');
-    if (storedToken && timestamp) {
-      const age = Date.now() - parseInt(timestamp);
-      if (age > CONFIG.SESSION_MAX_AGE) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('tokenTimestamp');
-        localStorage.removeItem('cachedUser');
-        return null;
-      }
-    }
-    return storedToken;
+    if (t) { localStorage.setItem('token', t); window.history.replaceState({}, document.title, window.location.pathname); }
+    return localStorage.getItem('token');
   });
   const tokenRef = useRef(token);
-
-  /* Wrapper to always sync token to localStorage and ref */
-  const setToken = useCallback((newToken) => {
-    if (newToken) {
-      localStorage.setItem('token', newToken);
-      localStorage.setItem('tokenTimestamp', Date.now().toString());
-    } else {
-      localStorage.removeItem('token');
-      localStorage.removeItem('tokenTimestamp');
-      localStorage.removeItem('cachedUser');
-    }
-    tokenRef.current = newToken;
-    setTokenState(newToken);
-  }, []);
 
   /* ---------- UI toggles ---------- */
   const [loading, setLoading] = useState(true);
@@ -287,7 +255,6 @@ export default function Video() {
   const [showGiftPopup, setShowGiftPopup] = useState(false);
   const [giftAnimation, setGiftAnimation] = useState(null);
   const [permBtnLoading, setPermBtnLoading] = useState(false);
-  const [sessionExpired, setSessionExpired] = useState(false);
 
   /* ---------- data state ---------- */
   const [user, setUser] = useState(null);
@@ -347,8 +314,6 @@ export default function Video() {
   const isPageVisibleRef = useRef(true);
   const pendingTrackRecoveryRef = useRef(false);
   const remoteStreamRef = useRef(null);
-  const sessionRefreshRef = useRef(null);
-  const isInitializedRef = useRef(false);
 
   /* ===================== TOAST ===================== */
   const addToast = useCallback((msg, type = 'info', title = '') => {
@@ -365,145 +330,6 @@ export default function Video() {
 
   useEffect(() => { userIdRef.current = user?.id ?? null; }, [user]);
 
-  /* ===================== USER CACHE HELPERS ===================== */
-  const restoreCachedUser = useCallback(() => {
-    try {
-      const cached = localStorage.getItem('cachedUser');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        setUser(parsed);
-        setUserCoins(parsed.coins || 0);
-        setStats(prev => ({ ...prev, level: parsed.level || 1 }));
-        return true;
-      }
-    } catch {}
-    return false;
-  }, []);
-
-  const cacheUser = useCallback((userData) => {
-    if (userData) {
-      try {
-        localStorage.setItem('cachedUser', JSON.stringify(userData));
-      } catch {}
-    }
-  }, []);
-
-  /* Cache user data whenever it updates (only if authenticated) */
-  useEffect(() => {
-    if (user && tokenRef.current) {
-      cacheUser(user);
-    }
-  }, [user, cacheUser]);
-
-  /* ===================== TOKEN VALIDATION ===================== */
-  const validateToken = useCallback(async () => {
-    const t = tokenRef.current;
-    if (!t) return { valid: false, user: null, reason: 'no_token' };
-
-    try {
-      const r = await safeFetch(CONFIG.BACKEND + '/auth/me', {
-        headers: { Authorization: 'Bearer ' + t }
-      });
-
-      if (r.status === 401 || r.status === 403) {
-        setToken(null);
-        setSessionExpired(true);
-        return { valid: false, user: null, reason: 'token_expired' };
-      }
-
-      if (!r.ok) {
-        return { valid: false, user: null, reason: 'server_error' };
-      }
-
-      const d = await r.json();
-      if (d.authenticated && d.user) {
-        if (d.user.banned_until && new Date(d.user.banned_until) > new Date()) {
-          setBanData({ reason: d.user.ban_reason, until: d.user.banned_until, type: null });
-          return { valid: true, user: d.user, banned: true };
-        }
-        cacheUser(d.user);
-        return { valid: true, user: d.user };
-      }
-
-      setToken(null);
-      setSessionExpired(true);
-      return { valid: false, user: null, reason: 'not_authenticated' };
-    } catch (error) {
-      return { valid: null, user: null, reason: 'network_error' };
-    }
-  }, [setToken, cacheUser]);
-
-  const validateTokenRef = useRef(validateToken);
-  useEffect(() => { validateTokenRef.current = validateToken; }, [validateToken]);
-
-  /* ===================== SESSION REFRESH (every 15 min) ===================== */
-  useEffect(() => {
-    if (!tokenRef.current) return;
-
-    const refreshSession = async () => {
-      if (!tokenRef.current) return;
-      try {
-        const r = await safeFetch(CONFIG.BACKEND + '/auth/me', {
-          headers: { Authorization: 'Bearer ' + tokenRef.current }
-        });
-
-        if (r.status === 401 || r.status === 403) {
-          setToken(null);
-          setSessionExpired(true);
-          addToastRef.current('Session expired, please log in again', 'info');
-          return;
-        }
-
-        if (r.ok) {
-          const d = await r.json();
-          if (d.authenticated && d.user) {
-            setUser(d.user);
-            setUserCoins(d.user.coins || 0);
-            cacheUser(d.user);
-          }
-        }
-      } catch (error) {
-        console.debug('Session refresh failed:', error);
-      }
-    };
-
-    sessionRefreshRef.current = setInterval(refreshSession, CONFIG.SESSION_REFRESH_INTERVAL);
-    return () => {
-      if (sessionRefreshRef.current) clearInterval(sessionRefreshRef.current);
-    };
-  }, [token, addToast, setToken, cacheUser]);
-
-  /* ===================== TAB FOCUS HANDLING ===================== */
-  useEffect(() => {
-    if (!tokenRef.current) return;
-
-    const handleFocus = () => {
-      const lastActive = parseInt(sessionStorage.getItem('lastActive') || '0');
-      const awayTime = Date.now() - lastActive;
-
-      if (awayTime > CONFIG.TAB_AWAY_THRESHOLD) {
-        validateTokenRef.current().then(result => {
-          if (result.valid === false && result.reason === 'token_expired') {
-            addToastRef.current('Session expired while away, please log in again', 'info');
-          }
-        });
-      }
-    };
-
-    const handleBlur = () => {
-      sessionStorage.setItem('lastActive', Date.now().toString());
-    };
-
-    window.addEventListener('focus', handleFocus);
-    window.addEventListener('blur', handleBlur);
-
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-      window.removeEventListener('blur', handleBlur);
-    };
-  }, [token]);
-
-  /* ===================== CHAT & TIMERS ===================== */
   const addMsgToChat = useCallback((msg, isOwn, name) => {
     setChatMessages(prev => [...prev, { msg, isOwn, name, id: Date.now() + Math.random() }]);
   }, []);
@@ -539,7 +365,6 @@ export default function Video() {
     el.play().catch(() => {});
   }, []);
 
-  /* ===================== TRACK RECOVERY ===================== */
   const recoverTracks = useCallback(async () => {
     if (isRecoveringTracks) return;
     const AgoraRTC = window.AgoraRTC;
@@ -689,15 +514,31 @@ export default function Video() {
     } catch (e) { addToast('Failed: ' + (e.message || 'Unknown error'), 'error'); doEndCallRef.current(); }
   };
 
+  const checkBanStatus = useCallback(async () => {
+    const t = tokenRef.current;
+    if (!t) return false;
+    try {
+      const r = await safeFetch(CONFIG.BACKEND + '/auth/me', { headers: { Authorization: 'Bearer ' + t } });
+      const d = await r.json();
+      if (d.authenticated && d.user) {
+        setUser(d.user);
+        setStats(prev => ({ ...prev, level: d.user.level || 1 }));
+        if (d.user.banned_until && new Date(d.user.banned_until) > new Date()) { setBanData({ reason: d.user.ban_reason, until: d.user.banned_until, type: null }); return true; }
+      }
+    } catch {}
+    return false;
+  }, []);
+
   const requestPermissions = async () => {
     setPermBtnLoading(true);
     try {
       const AgoraRTC = window.AgoraRTC;
       if (!AgoraRTC) throw new Error('AgoraRTC not loaded');
-
+      
+      // Attempt to create tracks
       const audio = await AgoraRTC.createMicrophoneAudioTrack();
       const video = await AgoraRTC.createCameraVideoTrack({ encoderConfig: { width: 1280, height: 720, frameRate: 30, bitrate: 1710 } });
-
+      
       localTracksRef.current.audioTrack = audio;
       localTracksRef.current.videoTrack = video;
       video.play(localVideoDivRef.current);
@@ -769,62 +610,20 @@ export default function Video() {
     if (params.get('gift') === 'success') { addToast('Gift sent successfully!', 'success'); window.history.replaceState({}, document.title, window.location.pathname); }
   };
 
-  const initializeAfterAuthRef = useRef(initializeAfterAuth);
-  useEffect(() => { initializeAfterAuthRef.current = initializeAfterAuth; }, []);
-
-  /* ===================== INITIAL AUTH CHECK (with persistent login) ===================== */
   useEffect(() => {
-    if (isInitializedRef.current) return;
-    isInitializedRef.current = true;
-
     (async () => {
-      if (!tokenRef.current) {
-        setLoading(false);
-        setSessionExpired(false);
-        setShowPermission(true);
-        return;
-      }
-
-      // Restore cached user immediately for instant UI
-      restoreCachedUser();
-
-      // Validate token with server
-      const result = await validateToken();
-
-      if (result.valid === false) {
-        setLoading(false);
-        if (result.reason === 'token_expired') {
-          addToast('Session expired, please log in again', 'info');
-        }
-        setShowPermission(true);
-        return;
-      }
-
-      if (result.banned) {
-        setLoading(false);
-        return;
-      }
-
-      if (result.valid === true && result.user) {
-        setUser(result.user);
-        setUserCoins(result.user.coins || 0);
-        setStats(prev => ({ ...prev, level: result.user.level || 1 }));
-      }
-
-      // If result.valid === null (network error), continue with cached data
+      if (!tokenRef.current) { setLoading(false); setShowPermission(true); return; }
+      const isBanned = await checkBanStatus();
+      if (isBanned) { setLoading(false); return; }
       setLoading(false);
       setShowPermission(true);
-
-      if (permissionsRef.current) {
-        await initializeAfterAuthRef.current();
-      }
     })();
-  }, []); // Run once on mount
+  }, [checkBanStatus]);
 
   const startMatching = async () => {
     if (isMatchingRef.current || isInCallRef.current) return;
     if (!permissionsRef.current) { addToast('Grant camera permissions first', 'error'); setShowPermission(true); return; }
-    if (!tokenRef.current) { addToast('Please log in', 'error'); setSessionExpired(true); return; }
+    if (!tokenRef.current) { addToast('Please log in', 'error'); return; }
     if (!socketRef.current || !socketRef.current.connected) return;
     const checkTrack = (track) => { if (!track || !track.getMediaStreamTrack) return true; return track.getMediaStreamTrack().readyState === 'ended'; };
     if (checkTrack(localTracksRef.current.audioTrack) || checkTrack(localTracksRef.current.videoTrack)) { addToast('Recovering camera...', 'info'); await recoverTracks(); return; }
@@ -833,15 +632,7 @@ export default function Video() {
     try {
       const payload = { gender: preferencesRef.current.gender, looking_for: preferencesRef.current.looking_for, location: locationSelect, interests: preferencesRef.current.interests, nickname: (user && (user.username || user.nickname)) || 'User' };
       const r = await safeFetch(CONFIG.BACKEND + '/queue/enqueue', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current }, body: JSON.stringify(payload) });
-      if (!r.ok) {
-        if (r.status === 401 || r.status === 403) {
-          setToken(null);
-          setSessionExpired(true);
-          throw new Error('Session expired, please log in again');
-        }
-        const e = await r.json().catch(() => ({ error: 'Enqueue failed' }));
-        throw new Error(e.error || 'Enqueue failed');
-      }
+      if (!r.ok) { const e = await r.json().catch(() => ({ error: 'Enqueue failed' })); throw new Error(e.error || 'Enqueue failed'); }
       const d = await r.json();
       if (d.matched) { setPendingMatch({ peerId: d.peerId, channel: d.channel, peerInfo: d.peerInfo }); setShowMatchModal(true); }
       else { addToast('Looking for a match...', 'info'); setTimeout(() => { if (isMatchingRef.current) checkForMatch(); }, 3000); }
@@ -975,24 +766,26 @@ export default function Video() {
         body: JSON.stringify({ giftType: type, recipientId: partnerIdRef.current }),
       });
       const d = await r.json();
-
+      
       if (d.success) {
+        // Success: Deduct coins locally and show animation
         setUserCoins(prev => Math.max(0, prev - costInCoins));
         triggerGiftAnimation(type);
         setShowGifts(false);
         addToast('Gift sent!', 'success');
       } else {
+        // Error handling
         if (d.code === 'INSUFFICIENT_FUNDS') {
           addToast('Not enough coins', 'error');
-          setShowGifts(false);
-          setShowPayment(true);
+          setShowGifts(false); // Close gift modal
+          setShowPayment(true); // Open coin purchase modal
         } else {
           throw new Error(d.error || 'Failed to send gift');
         }
       }
-    } catch (e) {
-      addToast(e.message || 'Failed', 'error');
-      setShowGifts(false);
+    } catch (e) { 
+      addToast(e.message || 'Failed', 'error'); 
+      setShowGifts(false); 
     }
   };
 
@@ -1070,33 +863,13 @@ export default function Video() {
     } catch { addToast('Payment error', 'error'); }
   };
 
-  /* ===================== LOGOUT (full session cleanup) ===================== */
-  const logout = useCallback(() => {
-    doEndCallRef.current();
-    stopMatching();
-
-    // Clear all persistent session data
-    localStorage.removeItem('token');
-    localStorage.removeItem('tokenTimestamp');
-    localStorage.removeItem('cachedUser');
-    sessionStorage.removeItem('lastActive');
-
-    tokenRef.current = null;
-    setTokenState(null);
-    setUser(null);
-    setUserCoins(0);
-    setStats({ matches: 0, likes: 0, level: 1 });
-    setSessionExpired(false);
-
-    if (sessionRefreshRef.current) clearInterval(sessionRefreshRef.current);
-
-    if (socketRef.current) {
-      socketRef.current.disconnect();
-      socketRef.current = null;
-    }
-
+  const logout = () => {
+    doEndCallRef.current(); stopMatching();
+    localStorage.removeItem('token'); tokenRef.current = null; setToken(null); setUser(null);
+    if (socketRef.current) socketRef.current.disconnect();
+    socketRef.current = null;
     window.location.href = '/';
-  }, [doEndCall]);
+  };
 
   const handleLike = () => {
     setStats(prev => ({ ...prev, likes: prev.likes + 1 }));
@@ -1135,530 +908,517 @@ export default function Video() {
     if (!wrapper) return;
     let dragging = false, sx, sy;
     const start = (cx, cy) => { if (currentLayout === 'split') return; dragging = true; sx = cx - wrapper.offsetLeft; sy = cy - wrapper.offsetTop; wrapper.style.transition = 'none'; };
-    const move = (cx, cy) => { if (!dragging || currentLayout !== 'float') return; const x = Math.max(0, Math.min(cx - sx, window.innerWidth - wrapper.offsetWidth)); const y = Math.max(0, Math.min(cy - sy, window.innerHeight - wrapper.offsetHeight)); wrapper.style.left = x + 'px'; wrapper.style.top = y + 'px'; wrapper.style.right = 'auto'; wrapper.style.bottom = 'auto'; };
-    const end = () => { dragging = false; wrapper.style.transition = ''; };
-    wrapper.addEventListener('mousedown', (e) => start(e.clientX, e.clientY));
-    window.addEventListener('mousemove', (e) => move(e.clientX, e.clientY));
-    window.addEventListener('mouseup', end);
-    wrapper.addEventListener('touchstart', (e) => { const t = e.touches[0]; start(t.clientX, t.clientY); }, { passive: true });
-    window.addEventListener('touchmove', (e) => { if (!dragging) return; const t = e.touches[0]; move(t.clientX, t.clientY); }, { passive: true });
-    window.addEventListener('touchend', end);
-    return () => { window.removeEventListener('mousemove', (e) => move(e.clientX, e.clientY)); window.removeEventListener('mouseup', end); window.removeEventListener('touchmove', (e) => { if (!dragging) return; const t = e.touches[0]; move(t.clientX, t.clientY); }); window.removeEventListener('touchend', end); };
+    const move = (cx, cy) => { if (!dragging || currentLayout !== 'float') return; const x = Math.max(0, Math.min(cx - sx, window.innerWidth - wrapper.offsetWidth)); const y = Math.max(0, Math.min(cy - sy, window.innerHeight - wrapper.offsetHeight)); wrapper.style.right = 'auto'; wrapper.style.bottom = 'auto'; wrapper.style.left = x + 'px'; wrapper.style.top = y + 'px'; };
+    const end = () => { if (dragging) { dragging = false; wrapper.style.transition = ''; } };
+    const md = (e) => { if (e.target.closest('button')) return; start(e.clientX, e.clientY); };
+    const ts = (e) => { if (e.target.closest('button')) return; start(e.touches[0].clientX, e.touches[0].clientY); };
+    const mm = (e) => move(e.clientX, e.clientY);
+    const tm = (e) => { if (dragging) { e.preventDefault(); move(e.touches[0].clientX, e.touches[0].clientY); } };
+    wrapper.addEventListener('mousedown', md); wrapper.addEventListener('touchstart', ts, { passive: true });
+    document.addEventListener('mousemove', mm); document.addEventListener('touchmove', tm, { passive: false });
+    document.addEventListener('mouseup', end); document.addEventListener('touchend', end);
+    return () => { wrapper.removeEventListener('mousedown', md); wrapper.removeEventListener('touchstart', ts); document.removeEventListener('mousemove', mm); document.removeEventListener('touchmove', tm); document.removeEventListener('mouseup', end); document.removeEventListener('touchend', end); };
   }, [currentLayout]);
 
+  /* ===================== SOCKET ===================== */
+  useEffect(() => {
+    if (!tokenRef.current) return;
+    const socket = io(CONFIG.BACKEND, { auth: { token: tokenRef.current } });
+    socketRef.current = socket;
+    socket.on('connect', () => {});
+    socket.on('authenticated', () => {});
+    socket.on('disconnect', () => {});
+    socket.on('match_found', (d) => {
+      if (isMatchingRef.current && !isInCallRef.current) {
+        isMatchingRef.current = false;
+        setPendingMatch({ peerId: d.peerId, channel: d.channel, peerInfo: d.peerInfo });
+        setShowMatchModal(true);
+      }
+    });
+    socket.on('peer_left', () => { addToastRef.current('Partner disconnected', 'info'); doEndCallRef.current(); });
+    socket.on('banned', (d) => { doEndCallRef.current(); setBanData({ reason: d.reason, until: d.until, type: null }); });
+    socket.on('moderation_action', (d) => { if (d.banned) { doEndCallRef.current(); setBanData({ reason: d.reason, until: null, type: d.type, text: d.text, offendingFrame: d.offendingFrame }); } });
+    socket.on('gift_received', (d) => { triggerGiftAnimation(d.giftType); addToastRef.current('You received a gift!', 'success'); });
+    socket.on('message', (d) => { const txt = d.text || d.message || ''; const own = d.uid && userIdRef.current && String(d.uid) === String(userIdRef.current); addMsgToChat(txt, own, own ? 'You' : (d.username || 'Stranger')); });
+    socket.on('room_history', (d) => { if (d.messages) d.messages.forEach(m => { const own = m.uid && userIdRef.current && String(m.uid) === String(userIdRef.current); addMsgToChat(m.message || m.text, own, own ? 'You' : 'Stranger'); }); });
+    socket.on('report_submitted', (d) => addToastRef.current(d.message || 'Report submitted', 'success'));
+    socket.on('typing', (d) => { if (d.uid && userIdRef.current && String(d.uid) !== String(userIdRef.current)) { setShowTyping(true); setTimeout(() => setShowTyping(false), 3000); } });
+    socket.on('error', (d) => { if (d.message) addToastRef.current(d.message, 'error'); });
+    return () => { socket.disconnect(); socketRef.current = null; };
+  }, [addMsgToChat, triggerGiftAnimation]);
+
+  useEffect(() => {
+    return () => {
+      if (matchTimerRef.current) clearInterval(matchTimerRef.current);
+      if (moderationRef.current) clearInterval(moderationRef.current);
+      if (trackRecoveryTimeoutRef.current) clearTimeout(trackRecoveryTimeoutRef.current);
+      if (socketRef.current) socketRef.current.disconnect();
+      if (clientRef.current) try { clientRef.current.leave(); } catch {}
+      Object.values(localTracksRef.current).forEach(t => { if (t) try { t.close(); } catch {} });
+      if (remoteStreamRef.current) remoteStreamRef.current.getTracks().forEach(t => { try { t.stop(); } catch {} });
+    };
+  }, []);
+
   /* ===================== RENDER ===================== */
-  if (loading) {
-    return (
-      <div style={{ width: '100vw', height: '100vh', background: 'linear-gradient(135deg, #0f0c29, #302b63, #24243e)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '20px' }}>
-        <div style={{ width: 50, height: 50, border: '3px solid rgba(99,102,241,0.2)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14 }}>Loading...</p>
-      </div>
-    );
-  }
-
   return (
-    <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden', background: '#0a0a1a' }}>
-      <canvas ref={canvasRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 0 }} />
-
-      {/* ===== SESSION EXPIRED OVERLAY ===== */}
-      {sessionExpired && !token && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(20px)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 20 }}>
-          <div style={{ fontSize: 48 }}>🔒</div>
-          <h2 style={{ color: 'white', margin: 0, fontSize: 24 }}>Session Expired</h2>
-          <p style={{ color: 'rgba(255,255,255,0.6)', margin: 0, textAlign: 'center', maxWidth: 300, lineHeight: 1.5 }}>Your session has expired. Please log in again to continue.</p>
-          <button onClick={() => window.location.href = '/'} style={{ padding: '12px 32px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', border: 'none', borderRadius: 12, fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>
-            Log In Again
-          </button>
-        </div>
-      )}
-
-      {/* ===== BAN OVERLAY ===== */}
-      {banData && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(20px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: 32, maxWidth: 400, width: '90%', textAlign: 'center' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🚫</div>
-            <h2 style={{ color: '#ef4444', margin: '0 0 8px' }}>Account Banned</h2>
-            <p style={{ color: 'rgba(255,255,255,0.7)', margin: '0 0 8px', fontSize: 14 }}>{banData.reason || 'Violation of community guidelines'}</p>
-            <p style={{ color: 'rgba(255,255,255,0.5)', margin: '0 0 20px', fontSize: 12 }}>Until: {formatDate(banData.until)}</p>
-            {!showAppeal ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <button onClick={() => setShowAppeal(true)} style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 10, cursor: 'pointer', fontSize: 14 }}>Submit Appeal</button>
-                <button onClick={initiateUnbanPayment} style={{ padding: '10px 20px', background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: 'white', border: 'none', borderRadius: 10, cursor: 'pointer', fontSize: 14, fontWeight: 600 }}>Pay to Unban</button>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <textarea value={appealText} onChange={(e) => setAppealText(e.target.value)} placeholder="Explain why you should be unbanned..." style={{ padding: 12, background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, color: 'white', fontSize: 14, minHeight: 80, resize: 'none', outline: 'none' }} />
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button onClick={submitAppeal} style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', border: 'none', borderRadius: 10, cursor: 'pointer', fontSize: 14 }}>Submit</button>
-                  <button onClick={() => { setShowAppeal(false); setAppealText(''); }} style={{ flex: 1, padding: '10px', background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 10, cursor: 'pointer', fontSize: 14 }}>Cancel</button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ===== UNBAN SUCCESS ===== */}
-      {showUnbanSuccess && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(20px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: 32, textAlign: 'center' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
-            <h2 style={{ color: '#10b981', margin: '0 0 8px' }}>Unbanned!</h2>
-            <p style={{ color: 'rgba(255,255,255,0.7)', margin: '0 0 20px' }}>Your account has been successfully unbanned.</p>
-            <button onClick={() => { setShowUnbanSuccess(false); setBanData(null); window.location.reload(); }} style={{ padding: '10px 24px', background: 'linear-gradient(135deg, #10b981, #059669)', color: 'white', border: 'none', borderRadius: 10, cursor: 'pointer', fontSize: 14, fontWeight: 600 }}>Continue</button>
-          </div>
-        </div>
-      )}
-
-      {/* ===== PERMISSION REQUEST ===== */}
-      {showPermission && !banData && !sessionExpired && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 50, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 24, padding: 40, maxWidth: 420, width: '90%', textAlign: 'center' }}>
-            <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', fontSize: 36 }}>📹</div>
-            <h2 style={{ color: 'white', margin: '0 0 8px', fontSize: 22 }}>Camera & Microphone</h2>
-            <p style={{ color: 'rgba(255,255,255,0.6)', margin: '0 0 24px', fontSize: 14, lineHeight: 1.5 }}>We need access to your camera and microphone to connect you with others.</p>
-            <button onClick={requestPermissions} disabled={permBtnLoading} style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', border: 'none', borderRadius: 14, fontSize: 16, fontWeight: 600, cursor: permBtnLoading ? 'not-allowed' : 'pointer', opacity: permBtnLoading ? 0.7 : 1 }}>
-              {permBtnLoading ? (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.6s linear infinite' }} />
-                  Requesting...
-                </span>
-              ) : 'Allow Access'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ===== BLUR MATCHING OVERLAY ===== */}
-      {showBlurOverlay && !showMatchModal && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 40, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(15px)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 20 }}>
-          <div style={{ width: 60, height: 60, border: '3px solid rgba(99,102,241,0.3)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-          <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 16 }}>Finding your match...</p>
-          <button onClick={stopMatching} style={{ padding: '8px 20px', background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
-        </div>
-      )}
-
-      {/* ===== MATCH FOUND MODAL ===== */}
-      {showMatchModal && pendingMatch && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 45, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(20px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.2), rgba(139,92,246,0.2))', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 24, padding: 40, maxWidth: 380, width: '90%', textAlign: 'center' }}>
-            <div style={{ fontSize: 48, marginBottom: 12, animation: 'pulse 1s ease-in-out infinite' }}>💕</div>
-            <h2 style={{ color: 'white', margin: '0 0 8px', fontSize: 24 }}>Match Found!</h2>
-            <p style={{ color: 'rgba(255,255,255,0.7)', margin: '0 0 24px', fontSize: 14 }}>
-              {pendingMatch.peerInfo?.username || pendingMatch.peerInfo?.nickname || 'Someone'} wants to chat
-            </p>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button onClick={declineMatch} style={{ flex: 1, padding: '12px', background: 'rgba(239,68,68,0.2)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 12, cursor: 'pointer', fontSize: 15, fontWeight: 600 }}>Skip</button>
-              <button onClick={acceptMatch} style={{ flex: 1, padding: '12px', background: 'linear-gradient(135deg, #10b981, #059669)', color: 'white', border: 'none', borderRadius: 12, cursor: 'pointer', fontSize: 15, fontWeight: 600 }}>Accept</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===== REMOTE VIDEO ===== */}
-      <video ref={remoteVideoRef} autoPlay playsInline muted style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 1, backgroundColor: '#1a1a2e' }} />
-
-      {/* ===== NO CALL CENTER PROMPT ===== */}
-      {!isInCall && !showBlurOverlay && !showMatchModal && !banData && !sessionExpired && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16, pointerEvents: 'none' }}>
-          <div style={{ fontSize: 64, opacity: 0.3 }}>🌐</div>
-          <h2 style={{ color: 'rgba(255,255,255,0.5)', margin: 0, fontSize: 20, fontWeight: 400 }}>Ready to meet someone new?</h2>
-          <p style={{ color: 'rgba(255,255,255,0.3)', margin: 0, fontSize: 14 }}>Tap Start below to begin</p>
-        </div>
-      )}
-
-      {/* ===== LOCAL VIDEO (FLOAT) ===== */}
-      {currentLayout === 'float' && (
-        <div ref={localVideoWrapperRef} style={{ position: 'absolute', right: 30, bottom: 100, width: 160, height: 220, borderRadius: 16, overflow: 'hidden', zIndex: 10, boxShadow: '0 8px 32px rgba(0,0,0,0.4)', border: '2px solid rgba(255,255,255,0.15)', cursor: 'grab' }}>
-          <div ref={localVideoDivRef} style={{ width: '100%', height: '100%', background: '#1a1a2e' }} />
-        </div>
-      )}
-
-      {/* ===== LOCAL VIDEO (SPLIT) ===== */}
-      {currentLayout === 'split' && (
-        <div style={{ position: 'absolute', right: 0, top: 0, width: '50%', height: '100%', zIndex: 10, borderLeft: '1px solid rgba(255,255,255,0.1)' }}>
-          <div ref={localVideoDivRef} style={{ width: '100%', height: '100%', background: '#1a1a2e' }} />
-        </div>
-      )}
-
-      {/* ===== TOP BAR ===== */}
-      {!banData && !sessionExpired && (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(to bottom, rgba(0,0,0,0.6), transparent)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {user?.avatar ? (
-              <img src={user.avatar} alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(99,102,241,0.5)' }} />
-            ) : (
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 14, fontWeight: 600 }}>
-                {(user?.username || user?.nickname || 'U')[0].toUpperCase()}
-              </div>
-            )}
-            <div>
-              <div style={{ color: 'white', fontSize: 14, fontWeight: 600 }}>{user?.username || user?.nickname || 'Guest'}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Lvl {stats.level}</span>
-                <span style={{ color: '#f59e0b', fontSize: 11 }}>🪙 {userCoins}</span>
-              </div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setShowSettings(true)} style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, backdropFilter: 'blur(10px)' }}>⚙️</button>
-            <button onClick={() => setShowProfile(true)} style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, backdropFilter: 'blur(10px)' }}>👤</button>
-            <button onClick={logout} style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(239,68,68,0.2)', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14, backdropFilter: 'blur(10px)' }}>🚪</button>
-          </div>
-        </div>
-      )}
-
-      {/* ===== PARTNER INFO (during call) ===== */}
-      {isInCall && partnerInfo && (
-        <div style={{ position: 'absolute', top: 70, left: 20, zIndex: 20, display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', padding: '8px 14px', borderRadius: 20, border: '1px solid rgba(255,255,255,0.1)' }}>
-          {partnerInfo.avatar ? (
-            <img src={partnerInfo.avatar} alt="" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} />
-          ) : (
-            <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 11 }}>?</div>
-          )}
-          <span style={{ color: 'white', fontSize: 13, fontWeight: 500 }}>{partnerInfo.username || partnerInfo.nickname || ' Stranger'}</span>
-          <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>⏱ {matchTime}</span>
-        </div>
-      )}
-
-      {/* ===== NETWORK QUALITY ===== */}
-      {isInCall && (
-        <div style={{ position: 'absolute', top: 70, right: 20, zIndex: 20, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 12, background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(10px)' }}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: networkQuality === 'excellent' ? '#10b981' : networkQuality === 'good' ? '#f59e0b' : '#ef4444' }} />
-          <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, textTransform: 'capitalize' }}>{networkQuality}</span>
-        </div>
-      )}
-
-      {/* ===== BOTTOM CONTROLS ===== */}
-      {!banData && !sessionExpired && (
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 20, padding: '20px', background: 'linear-gradient(to top, rgba(0,0,0,0.7), transparent)' }}>
-          {!isInCall ? (
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <button onClick={startMatching} disabled={!token} style={{ padding: '14px 48px', background: !token ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', border: 'none', borderRadius: 16, fontSize: 18, fontWeight: 700, cursor: !token ? 'not-allowed' : 'pointer', boxShadow: '0 4px 20px rgba(99,102,241,0.4)', letterSpacing: 0.5 }}>
-                {!token ? 'Log in to Start' : 'Start'}
-              </button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <button onClick={handleNext} title="Next" style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 18, backdropFilter: 'blur(10px)' }}>⏭</button>
-              <button onClick={handleLike} title="Like" style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(239,68,68,0.2)', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 18, backdropFilter: 'blur(10px)' }}>❤️</button>
-              <button onClick={() => setShowGifts(true)} title="Send Gift" style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(245,158,11,0.2)', border: 'none', color: '#f59e0b', cursor: 'pointer', fontSize: 18, backdropFilter: 'blur(10px)' }}>🎁</button>
-              <button onClick={() => setShowChat(!showChat)} title="Chat" style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(99,102,241,0.2)', border: 'none', color: '#6366f1', cursor: 'pointer', fontSize: 18, backdropFilter: 'blur(10px)' }}>💬</button>
-              <button onClick={switchCamera} title="Switch Camera" style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 18, backdropFilter: 'blur(10px)' }}>🔄</button>
-              <button onClick={() => setShowEffects(true)} title="Effects" style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 18, backdropFilter: 'blur(10px)' }}>✨</button>
-              <button onClick={toggleLayout} title="Layout" style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 18, backdropFilter: 'blur(10px)' }}>📐</button>
-              <button onClick={toggleScreenShare} title="Screen Share" style={{ width: 48, height: 48, borderRadius: '50%', background: isScreenSharingRef.current ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.1)', border: 'none', color: isScreenSharingRef.current ? '#10b981' : 'white', cursor: 'pointer', fontSize: 18, backdropFilter: 'blur(10px)' }}>🖥</button>
-              <button onClick={togglePiP} title="Picture in Picture" style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 18, backdropFilter: 'blur(10px)' }}>📌</button>
-              <button onClick={() => setShowReport(true)} title="Report" style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(239,68,68,0.15)', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 18, backdropFilter: 'blur(10px)' }}>🚩</button>
-              <button onClick={doEndCallRef.current} title="End Call" style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #ef4444, #dc2626)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 22, boxShadow: '0 4px 15px rgba(239,68,68,0.4)' }}>✕</button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ===== CHAT PANEL ===== */}
-      {showChat && isInCall && (
-        <div style={{ position: 'absolute', left: 20, bottom: 100, width: 300, maxHeight: 400, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(20px)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.1)', zIndex: 30, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: 'white', fontSize: 14, fontWeight: 600 }}>Chat</span>
-            <button onClick={() => setShowChat(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 16 }}>✕</button>
-          </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {chatMessages.map((m) => (
-              <div key={m.id} style={{ alignSelf: m.isOwn ? 'flex-end' : 'flex-start', maxWidth: '80%' }}>
-                {!m.isOwn && <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, marginBottom: 2 }}>{m.name}</div>}
-                <div style={{ padding: '8px 12px', borderRadius: 12, background: m.isOwn ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.1)', color: 'white', fontSize: 13, lineHeight: 1.4, wordBreak: 'break-word' }}>{escapeHtml(m.msg)}</div>
-              </div>
-            ))}
-            {showTyping && <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, fontStyle: 'italic' }}>typing...</div>}
-          </div>
-          <div style={{ padding: 12, borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: 8 }}>
-            <input value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendMessage()} placeholder="Type a message..." style={{ flex: 1, padding: '8px 12px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, color: 'white', fontSize: 13, outline: 'none' }} />
-            <button onClick={sendMessage} style={{ padding: '8px 14px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', border: 'none', borderRadius: 10, cursor: 'pointer', fontSize: 13 }}>➤</button>
-          </div>
-        </div>
-      )}
-
-      {/* ===== SETTINGS MODAL ===== */}
-      {showSettings && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'rgba(30,30,50,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: 28, maxWidth: 440, width: '90%', maxHeight: '85vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ color: 'white', margin: 0, fontSize: 18 }}>Settings</h3>
-              <button onClick={() => setShowSettings(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 20 }}>✕</button>
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>I am</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {['male', 'female', 'other'].map(g => (
-                  <button key={g} onClick={() => setGenderSelect(g)} style={{ flex: 1, padding: '10px', background: genderSelect === g ? 'linear-gradient(135deg, #6366f1, #8b5cf6)' : 'rgba(255,255,255,0.08)', color: 'white', border: genderSelect === g ? 'none' : '1px solid rgba(255,255,255,0.12)', borderRadius: 10, cursor: 'pointer', fontSize: 13, textTransform: 'capitalize' }}>{g}</button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>Looking for</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {['any', 'male', 'female'].map(g => (
-                  <button key={g} onClick={() => setLookingFor(g)} style={{ flex: 1, padding: '10px', background: lookingFor === g ? 'linear-gradient(135deg, #6366f1, #8b5cf6)' : 'rgba(255,255,255,0.08)', color: 'white', border: lookingFor === g ? 'none' : '1px solid rgba(255,255,255,0.12)', borderRadius: 10, cursor: 'pointer', fontSize: 13, textTransform: 'capitalize' }}>{g}</button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>Location</label>
-              <CountryScroll value={locationSelect} onChange={setLocationSelect} />
-            </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>Interests (comma separated, max 5)</label>
-              <input value={interestsInput} onChange={(e) => setInterestsInput(e.target.value)} placeholder="music, gaming, travel..." style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, color: 'white', fontSize: 13, outline: 'none' }} />
-            </div>
-
-            <button onClick={saveSettings} style={{ width: '100%', padding: '12px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', border: 'none', borderRadius: 12, cursor: 'pointer', fontSize: 15, fontWeight: 600 }}>Save Settings</button>
-          </div>
-        </div>
-      )}
-
-      {/* ===== PROFILE MODAL ===== */}
-      {showProfile && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'rgba(30,30,50,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: 28, maxWidth: 400, width: '90%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ color: 'white', margin: 0, fontSize: 18 }}>Profile</h3>
-              <button onClick={() => setShowProfile(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 20 }}>✕</button>
-            </div>
-
-            <div style={{ textAlign: 'center', marginBottom: 20 }}>
-              <div style={{ position: 'relative', display: 'inline-block' }}>
-                {user?.avatar ? (
-                  <img src={user.avatar} alt="" style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover', border: '3px solid rgba(99,102,241,0.5)' }} />
-                ) : (
-                  <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 28, fontWeight: 600 }}>
-                    {(user?.username || user?.nickname || 'U')[0].toUpperCase()}
-                  </div>
-                )}
-                <label style={{ position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderRadius: '50%', background: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 12, border: '2px solid #1e1e32' }}>
-                  📷
-                  <input type="file" accept="image/*" onChange={handleAvatarUpload} style={{ display: 'none' }} />
-                </label>
-              </div>
-              {!showEditName ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 10 }}>
-                  <span style={{ color: 'white', fontSize: 16, fontWeight: 600 }}>{user?.username || user?.nickname || 'Guest'}</span>
-                  <button onClick={() => { setEditName(user?.username || user?.nickname || ''); setShowEditName(true); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 12 }}>✏️</button>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'center' }}>
-                  <input value={editName} onChange={(e) => setEditName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saveProfileName()} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, color: 'white', fontSize: 14, outline: 'none', width: 150 }} autoFocus />
-                  <button onClick={saveProfileName} style={{ padding: '6px 12px', background: '#6366f1', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 12 }}>✓</button>
-                </div>
-              )}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 8 }}>
-                <span className={`provider-badge ${providerInfo.cls}`} style={{ padding: '3px 10px', borderRadius: 8, fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <i className={providerInfo.icon} /> {providerInfo.label}
-                </span>
-                {user?.email && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>{maskEmail(user.email)}</span>}
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
-              <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 12, textAlign: 'center' }}>
-                <div style={{ color: '#6366f1', fontSize: 20, fontWeight: 700 }}>{stats.matches}</div>
-                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Matches</div>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 12, textAlign: 'center' }}>
-                <div style={{ color: '#ef4444', fontSize: 20, fontWeight: 700 }}>{stats.likes}</div>
-                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Likes</div>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 12, textAlign: 'center' }}>
-                <div style={{ color: '#f59e0b', fontSize: 20, fontWeight: 700 }}>{stats.level}</div>
-                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Level</div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>Coins</span>
-                <span style={{ color: '#f59e0b', fontSize: 13, fontWeight: 600 }}>🪙 {userCoins}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>Joined</span>
-                <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13 }}>{formatDate(user?.created_at)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>Age Verified</span>
-                <span style={{ color: user?.age_verified ? '#10b981' : 'rgba(255,255,255,0.4)', fontSize: 13 }}>{user?.age_verified ? '✅ Yes' : '❌ No'}</span>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-              {!user?.age_verified && (
-                <button onClick={() => { setShowAgeVerify(true); setShowProfile(false); }} style={{ flex: 1, padding: '10px', background: 'rgba(16,185,129,0.2)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 10, cursor: 'pointer', fontSize: 13 }}>Verify Age</button>
-              )}
-              <button onClick={() => { setShowPayment(true); setShowProfile(false); }} style={{ flex: 1, padding: '10px', background: 'rgba(245,158,11,0.2)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 10, cursor: 'pointer', fontSize: 13 }}>Buy Coins</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===== GIFT MODAL ===== */}
-      {showGifts && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'rgba(30,30,50,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: 28, maxWidth: 380, width: '90%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ color: 'white', margin: 0, fontSize: 18 }}>Send a Gift 🎁</h3>
-              <button onClick={() => setShowGifts(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 20 }}>✕</button>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-              {[
-                { type: 'rose', emoji: '🌹', name: 'Rose', cost: 10 },
-                { type: 'heart', emoji: '❤️', name: 'Heart', cost: 25 },
-                { type: 'star', emoji: '⭐', name: 'Star', cost: 50 },
-                { type: 'diamond', emoji: '💎', name: 'Diamond', cost: 100 },
-                { type: 'crown', emoji: '👑', name: 'Crown', cost: 250 },
-                { type: 'rocket', emoji: '🚀', name: 'Rocket', cost: 500 },
-              ].map(g => (
-                <button key={g.type} onClick={() => sendGift(g.type, g.cost)} style={{ padding: 16, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}>
-                  <span style={{ fontSize: 28 }}>{g.emoji}</span>
-                  <span style={{ color: 'white', fontSize: 12, fontWeight: 600 }}>{g.name}</span>
-                  <span style={{ color: '#f59e0b', fontSize: 11 }}>🪙 {g.cost}</span>
-                </button>
-              ))}
-            </div>
-            <div style={{ textAlign: 'center', marginTop: 16, color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>Your balance: 🪙 {userCoins}</div>
-          </div>
-        </div>
-      )}
-
-      {/* ===== PAYMENT / BUY COINS MODAL ===== */}
-      {showPayment && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'rgba(30,30,50,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: 28, maxWidth: 400, width: '90%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ color: 'white', margin: 0, fontSize: 18 }}>Buy Coins 🪙</h3>
-              <button onClick={() => setShowPayment(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 20 }}>✕</button>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {[
-                { coins: 100, price: '$0.99', id: 'coins_100' },
-                { coins: 500, price: '$3.99', id: 'coins_500', popular: true },
-                { coins: 1000, price: '$6.99', id: 'coins_1000' },
-                { coins: 5000, price: '$29.99', id: 'coins_5000', best: true },
-              ].map(p => (
-                <button key={p.id} onClick={() => setSelectedCoinPackage({ priceId: p.id, quantity: p.coins })} style={{ padding: 14, background: selectedCoinPackage?.priceId === p.id ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.05)', border: selectedCoinPackage?.priceId === p.id ? '1px solid rgba(99,102,241,0.5)' : '1px solid rgba(255,255,255,0.1)', borderRadius: 12, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ fontSize: 20 }}>🪙</span>
-                    <span style={{ color: 'white', fontSize: 15, fontWeight: 600 }}>{p.coins} Coins</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {p.popular && <span style={{ padding: '2px 8px', background: 'rgba(99,102,241,0.3)', borderRadius: 6, color: '#a5b4fc', fontSize: 10, fontWeight: 600 }}>POPULAR</span>}
-                    {p.best && <span style={{ padding: '2px 8px', background: 'rgba(245,158,11,0.3)', borderRadius: 6, color: '#fcd34d', fontSize: 10, fontWeight: 600 }}>BEST VALUE</span>}
-                    <span style={{ color: '#f59e0b', fontSize: 15, fontWeight: 700 }}>{p.price}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-            <button onClick={purchaseCoins} disabled={!selectedCoinPackage} style={{ width: '100%', padding: '12px', marginTop: 16, background: selectedCoinPackage ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'rgba(255,255,255,0.1)', color: 'white', border: 'none', borderRadius: 12, cursor: selectedCoinPackage ? 'pointer' : 'not-allowed', fontSize: 15, fontWeight: 600, opacity: selectedCoinPackage ? 1 : 0.5 }}>Purchase</button>
-          </div>
-        </div>
-      )}
-
-      {/* ===== REPORT MODAL ===== */}
-      {showReport && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'rgba(30,30,50,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: 28, maxWidth: 400, width: '90%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ color: '#ef4444', margin: 0, fontSize: 18 }}>Report User 🚩</h3>
-              <button onClick={() => setShowReport(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 20 }}>✕</button>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-              {['Inappropriate content', 'Harassment', 'Spam', 'Underage user', 'Other'].map(r => (
-                <button key={r} onClick={() => setSelectedReport(r)} style={{ padding: '10px 14px', background: selectedReport === r ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.05)', border: selectedReport === r ? '1px solid rgba(239,68,68,0.4)' : '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: 'white', cursor: 'pointer', fontSize: 13, textAlign: 'left' }}>{r}</button>
-              ))}
-            </div>
-            <textarea value={reportDetails} onChange={(e) => setReportDetails(e.target.value)} placeholder="Additional details (optional)..." style={{ width: '100%', padding: '10px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, color: 'white', fontSize: 13, minHeight: 60, resize: 'none', outline: 'none', marginBottom: 12 }} />
-            <button onClick={submitReport} style={{ width: '100%', padding: '12px', background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: 'white', border: 'none', borderRadius: 12, cursor: 'pointer', fontSize: 15, fontWeight: 600 }}>Submit Report</button>
-          </div>
-        </div>
-      )}
-
-      {/* ===== EFFECTS MODAL ===== */}
-      {showEffects && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'rgba(30,30,50,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: 28, maxWidth: 340, width: '90%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ color: 'white', margin: 0, fontSize: 18 }}>Effects ✨</h3>
-              <button onClick={() => setShowEffects(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: 20 }}>✕</button>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              {[
-                { id: 'none', label: 'None', preview: '🎬' },
-                { id: 'blur', label: 'Blur', preview: '🌫️' },
-                { id: 'grayscale', label: 'B&W', preview: '⬛' },
-                { id: 'sepia', label: 'Sepia', preview: '🟤' },
-                { id: 'invert', label: 'Invert', preview: '🔄' },
-                { id: 'contrast', label: 'Contrast', preview: '🔆' },
-              ].map(e => (
-                <button key={e.id} onClick={() => applyEffect(e.id)} style={{ padding: 16, background: activeEffect === e.id ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.05)', border: activeEffect === e.id ? '1px solid rgba(99,102,241,0.5)' : '1px solid rgba(255,255,255,0.1)', borderRadius: 12, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 24 }}>{e.preview}</span>
-                  <span style={{ color: 'white', fontSize: 12 }}>{e.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===== AGE VERIFY MODAL ===== */}
-      {showAgeVerify && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: 'rgba(30,30,50,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: 28, maxWidth: 380, width: '90%', textAlign: 'center' }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>🎂</div>
-            <h3 style={{ color: 'white', margin: '0 0 8px', fontSize: 18 }}>Age Verification</h3>
-            <p style={{ color: 'rgba(255,255,255,0.6)', margin: '0 0 20px', fontSize: 13 }}>Please enter your date of birth. You must be 18 or older.</p>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-              <input value={ageDay} onChange={(e) => setAgeDay(e.target.value)} placeholder="DD" maxLength={2} style={{ flex: 1, padding: '10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, color: 'white', fontSize: 14, textAlign: 'center', outline: 'none' }} />
-              <input value={ageMonth} onChange={(e) => setAgeMonth(e.target.value)} placeholder="MM" maxLength={2} style={{ flex: 1, padding: '10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, color: 'white', fontSize: 14, textAlign: 'center', outline: 'none' }} />
-              <input value={ageYear} onChange={(e) => setAgeYear(e.target.value)} placeholder="YYYY" maxLength={4} style={{ flex: 1, padding: '10px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, color: 'white', fontSize: 14, textAlign: 'center', outline: 'none' }} />
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setShowAgeVerify(false)} style={{ flex: 1, padding: '10px', background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 10, cursor: 'pointer', fontSize: 14 }}>Cancel</button>
-              <button onClick={verifyAge} style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg, #10b981, #059669)', color: 'white', border: 'none', borderRadius: 10, cursor: 'pointer', fontSize: 14, fontWeight: 600 }}>Verify</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===== GIFT ANIMATION POPUP ===== */}
-      {showGiftPopup && giftAnimation && (
-        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 200, fontSize: 80, animation: 'giftPop 0.5s ease-out', pointerEvents: 'none' }}>
-          {giftAnimation}
-          <style>{`@keyframes giftPop { 0% { transform: scale(0); opacity: 0; } 50% { transform: scale(1.3); } 100% { transform: scale(1); opacity: 1; } }`}</style>
-        </div>
-      )}
-
-      {/* ===== TOAST CONTAINER ===== */}
-      <div style={{ position: 'absolute', top: 70, left: '50%', transform: 'translateX(-50%)', zIndex: 500, display: 'flex', flexDirection: 'column', gap: 8, pointerEvents: 'none' }}>
+    <>
+      <div className="toast-container">
         {toasts.map(t => (
-          <div key={t.id} style={{ padding: '10px 20px', borderRadius: 12, background: t.type === 'error' ? 'rgba(239,68,68,0.9)' : t.type === 'success' ? 'rgba(16,185,129,0.9)' : 'rgba(99,102,241,0.9)', color: 'white', fontSize: 13, fontWeight: 500, backdropFilter: 'blur(10px)', transition: 'all 0.3s ease', opacity: t.visible ? 1 : 0, transform: t.visible ? 'translateY(0)' : 'translateY(-10px)', whiteSpace: 'nowrap', boxShadow: '0 4px 15px rgba(0,0,0,0.3)' }}>
-            {t.title && <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 2 }}>{t.title}</div>}
-            {t.msg}
+          <div key={t.id} className={`toast ${t.type} ${t.visible ? 'show' : ''}`} role="alert" aria-live="assertive">
+            <div className="toast-icon"><i className={`fas ${t.type === 'success' ? 'fa-check' : t.type === 'error' ? 'fa-times' : 'fa-info'}`} /></div>
+            <div className="toast-content">{t.title && <div className="toast-title">{t.title}</div>}<div className="toast-message">{t.msg}</div></div>
           </div>
         ))}
       </div>
 
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
-        .provider-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 8px; font-size: 11px; }
-        .provider-badge.google { background: rgba(234,67,53,0.15); color: #ea4335; }
-        .provider-badge.discord { background: rgba(88,101,242,0.15); color: #5865f2; }
-        .provider-badge.facebook { background: rgba(24,119,242,0.15); color: #1877f2; }
-        .provider-badge.unknown { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.5); }
-      `}</style>
+      {loading && (
+        <div id="loadingScreen" role="status" aria-live="polite">
+          <div className="loading-spinner" />
+          <div className="loading-text">Loading Omevo...</div>
+        </div>
+      )}
+
+      {banData && (
+        <div className="ban-overlay active" role="alertdialog" aria-labelledby="banTitle" aria-describedby="banDesc">
+          <div className="ban-bg-noise" />
+          <div className="ban-scanline" />
+          <div className="ban-container">
+            <div className="ban-stamp" id="banTitle">BANNED</div>
+            {banData.type === 'video' && banData.offendingFrame && (
+              <div className="ban-evidence-frame">
+                <div className="ban-evidence-label">Flagged Content</div>
+                <img src={banData.offendingFrame} alt="Flagged content" className="ban-evidence-img" />
+              </div>
+            )}
+            {banData.type === 'chat' && banData.text && (
+              <div className="ban-evidence-frame">
+                <div className="ban-evidence-label">Flagged Message</div>
+                <div className="ban-evidence-text">"{banData.text}"</div>
+              </div>
+            )}
+            <div className="ban-reason-frame">
+              <div className="ban-reason-label">Reason for Suspension</div>
+              <div className="ban-reason-icon"><i className="fas fa-exclamation-triangle" style={{ color: 'var(--danger)' }} /></div>
+              <div className="ban-reason-text" id="banDesc">{banData.reason || 'Your account has been suspended due to a violation of our community guidelines.'}</div>
+              {banData.until && (
+                <div className="ban-duration">
+                  <i className="fas fa-clock" />
+                  <span>{(() => {
+                    const diff = Math.ceil((new Date(banData.until) - new Date()) / (1000 * 60 * 60 * 24));
+                    return diff > 0 ? `Suspension ends in ~${diff} day${diff > 1 ? 's' : ''} (${new Date(banData.until).toLocaleDateString()})` : 'Suspension ends: ' + new Date(banData.until).toLocaleString();
+                  })()}</span>
+                </div>
+              )}
+            </div>
+            <div className="ban-price-card">
+              <div className="ban-price-label">Removal Fee</div>
+              <div className="ban-price-amount">$5.99</div>
+              <div className="ban-price-sub">One-time payment · Instant removal</div>
+            </div>
+            <div className="crypto-icons" aria-label="Accepted Cryptocurrencies">
+              <div className="crypto-icon btc" title="Bitcoin">BTC</div>
+              <div className="crypto-icon eth" title="Ethereum">ETH</div>
+              <div className="crypto-icon ltc" title="Litecoin">LTC</div>
+              <div className="crypto-icon usdc" title="USDC">USDC</div>
+              <div className="crypto-icon dai" title="DAI">DAI</div>
+              <div className="crypto-icon more" title="More">+5</div>
+            </div>
+            <div className="crypto-label">Pay securely via Coinbase Commerce</div>
+            <button className="ban-pay-btn" onClick={initiateUnbanPayment}>
+              <i className="fas fa-shield-alt btn-icon" /> Pay $5.99 to Unban
+            </button>
+            <div className="ban-appeal">
+              <button className="ban-appeal-btn" onClick={() => setShowAppeal(true)}><i className="fas fa-gavel" /> Submit an Appeal Instead</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMatchModal && pendingMatch && (
+        <div className="match-modal-overlay active">
+          <div className="match-modal-container">
+            <div className="match-modal-header">
+              <div className="match-pulse-ring" />
+              <i className="fas fa-user-check" style={{ fontSize: '2rem', color: 'var(--success)' }} />
+            </div>
+            <div className="match-modal-avatar">
+              {pendingMatch.peerInfo?.avatar?.startsWith('http') || pendingMatch.peerInfo?.avatar?.startsWith('data:') ? (
+                <img src={pendingMatch.peerInfo.avatar} alt="Partner" />
+              ) : (
+                <div className="avatar-fallback-large">
+                  {(pendingMatch.peerInfo?.username || pendingMatch.peerInfo?.nickname || 'U').substring(0, 2).toUpperCase()}
+                </div>
+              )}
+            </div>
+            <h2 className="match-modal-name">
+              {pendingMatch.peerInfo?.display_name || pendingMatch.peerInfo?.username || pendingMatch.peerInfo?.nickname || 'Stranger'}
+            </h2>
+            <div className="match-modal-info-grid">
+              <div className="match-info-item">
+                <i className="fas fa-map-marker-alt" />
+                <span>{pendingMatch.peerInfo?.location || 'Unknown'}</span>
+              </div>
+              <div className="match-info-item">
+                <i className="fas fa-venus-mars" />
+                <span>{pendingMatch.peerInfo?.gender ? pendingMatch.peerInfo.gender.charAt(0).toUpperCase() + pendingMatch.peerInfo.gender.slice(1) : 'Unknown'}</span>
+              </div>
+              <div className="match-info-item">
+                <i className="fas fa-star" />
+                <span>Level {(() => { if (pendingMatch.peerInfo?.created_at) { const hours = Math.floor((Date.now() - new Date(pendingMatch.peerInfo.created_at).getTime()) / 3600000); return Math.max(1, hours); } return 1; })()}</span>
+              </div>
+            </div>
+            {pendingMatch.peerInfo?.interests?.length > 0 && (
+              <div className="match-modal-interests">
+                {pendingMatch.peerInfo.interests.map((i, idx) => <span key={idx} className="interest-tag">{i}</span>)}
+              </div>
+            )}
+            <div className="match-modal-actions">
+              <button className="match-btn decline" onClick={declineMatch}>
+                <i className="fas fa-times" /> Skip
+              </button>
+              <button className="match-btn accept" onClick={acceptMatch}>
+                <i className="fas fa-video" /> Start Chat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showGiftPopup && giftAnimation && (
+        <div className="gift-popup-overlay">
+          <div className="gift-popup-content">
+            <div className="gift-emoji">{giftAnimation}</div>
+            <div className="gift-sparkles">
+              {[...Array(8)].map((_, i) => <div key={i} className="sparkle" style={{ '--delay': `${i * 0.1}s`, '--angle': `${i * 45}deg` }} />)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAppeal && (
+        <div className="modal-overlay active" role="dialog" aria-labelledby="appealTitle" onClick={() => setShowAppeal(false)}>
+          <div className="appeal-content" onClick={e => e.stopPropagation()}>
+            <h3 id="appealTitle">Submit Appeal</h3>
+            <p>Explain why you believe this ban was issued in error. Appeals are reviewed within 48 hours.</p>
+            <textarea className="appeal-textarea" value={appealText} onChange={e => setAppealText(e.target.value)} placeholder="Describe your situation... (min 10 characters)" maxLength={500} />
+            <div style={{ textAlign: 'right', marginTop: 4 }}><span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{appealText.length} / 500</span></div>
+            <div className="appeal-actions">
+              <button className="btn" style={{ background: 'var(--dark)', color: 'var(--text)' }} onClick={() => setShowAppeal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={submitAppeal}>Submit Appeal</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAgeVerify && (
+        <div className="modal-overlay active" role="dialog" aria-labelledby="ageVerifyTitle" onClick={() => setShowAgeVerify(false)}>
+          <div className="age-verify-content" onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: '3rem', marginBottom: 16 }}><i className="fas fa-id-card" style={{ color: 'var(--success)' }} /></div>
+            <h3 id="ageVerifyTitle">Age Verification</h3>
+            <p>You must be at least 18 years old to use video chat features.</p>
+            <div className="age-input-group">
+              <input type="number" className="age-input" value={ageDay} onChange={e => setAgeDay(e.target.value)} placeholder="DD" min={1} max={31} aria-label="Day" />
+              <input type="number" className="age-input" value={ageMonth} onChange={e => setAgeMonth(e.target.value)} placeholder="MM" min={1} max={12} aria-label="Month" />
+              <input type="number" className="age-input" value={ageYear} onChange={e => setAgeYear(e.target.value)} placeholder="YYYY" min={1920} max={2010} aria-label="Year" />
+            </div>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+              <button className="btn" style={{ background: 'var(--dark)', color: 'var(--text)' }} onClick={() => setShowAgeVerify(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={verifyAge}>Verify Age</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showUnbanSuccess && (
+        <div className="unban-success-overlay active" role="status">
+          <div className="success-check"><i className="fas fa-check" /></div>
+          <h2 style={{ fontSize: '2rem', fontWeight: 800, marginBottom: 10 }}>Account Restored</h2>
+          <p style={{ color: 'var(--text-dim)', marginBottom: 30, fontSize: '1.1rem' }}>Your suspension has been lifted. Welcome back!</p>
+          <button className="btn btn-primary" onClick={() => { setShowUnbanSuccess(false); setBanData(null); initializeAfterAuth(); }} style={{ padding: '14px 40px', fontSize: '1.1rem' }}>Continue to Omevo</button>
+        </div>
+      )}
+
+      {showPermission && !banData && (
+        <div className="permission-overlay" role="dialog" aria-labelledby="permTitle">
+          <div className="permission-card">
+            <div className="permission-icon"><i className="fas fa-video" /></div>
+            <h2 className="permission-title" id="permTitle">Camera &amp; Microphone Required</h2>
+            <p className="permission-description">Omevo needs access to your camera and microphone to connect you with others through video chat.</p>
+            <div className="permission-features">
+              <div className="permission-feature"><i className="fas fa-check-circle" /><div className="permission-feature-text">HD Video Quality</div></div>
+              <div className="permission-feature"><i className="fas fa-check-circle" /><div className="permission-feature-text">Clear Audio</div></div>
+              <div className="permission-feature"><i className="fas fa-check-circle" /><div className="permission-feature-text">Privacy Protected</div></div>
+              <div className="permission-feature"><i className="fas fa-check-circle" /><div className="permission-feature-text">Safe &amp; Secure</div></div>
+            </div>
+            <div className="permission-buttons">
+              <button className="permission-btn secondary" onClick={() => addToast('Camera and microphone access is required.', 'info')}>Maybe Later</button>
+              <button className="permission-btn primary" onClick={requestPermissions} disabled={permBtnLoading}>
+                {permBtnLoading ? <><i className="fas fa-spinner fa-spin" /> Requesting...</> : 'Allow Access'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <canvas ref={canvasRef} aria-hidden="true" />
+
+      <div id="app">
+        <div className={`video-container ${currentLayout === 'split' ? 'split-mode' : ''}`}>
+          <div id="remoteVideoWrapper">
+            <video ref={remoteVideoRef} autoPlay playsInline />
+          </div>
+
+          {showBlurOverlay && (
+            <div className="blur-overlay active">
+              <div className="matching-content" style={{ textAlign: 'center' }}>
+                <div className="pulse-animation"><i className="fas fa-search" style={{ fontSize: '3rem', color: 'white' }} /></div>
+                <div className="matching-text">Finding someone to chat with...</div>
+                <div className="matching-subtext">This usually takes less than 10 seconds</div>
+                <div className="spinner" />
+                <button className="cancel-btn" onClick={stopMatching}>Cancel Search</button>
+              </div>
+            </div>
+          )}
+
+          <div ref={localVideoWrapperRef} id="localVideoWrapper" style={{ opacity: isRecoveringTracks ? 0.5 : 1 }}>
+            <div ref={localVideoDivRef} id="localVideo" style={{ width: '100%', height: '100%' }} />
+            {isRecoveringTracks && (
+              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: 'white', textAlign: 'center' }}>
+                <i className="fas fa-sync fa-spin" style={{ fontSize: '1.5rem', marginBottom: 8 }} />
+                <div style={{ fontSize: '0.8rem' }}>Recovering...</div>
+              </div>
+            )}
+            <button id="pipBtn" title="Picture in Picture" aria-label="Toggle Picture in Picture" onClick={togglePiP}><i className="fas fa-external-link-alt" /></button>
+            <button id="resetPositionBtn" title="Reset Position" aria-label="Reset Video Position" onClick={resetVideoPosition}><i className="fas fa-compress" /></button>
+          </div>
+
+          {partnerInfo && isInCall && (
+            <div className="partner-info">
+              <div className="name">
+                <span>{partnerInfo.display_name || partnerInfo.username || partnerInfo.nickname || 'Stranger'}</span>
+                <span className="badge"><i className="fas fa-check-circle" /> Verified</span>
+              </div>
+              <div className="details">
+                <div><i className="fas fa-map-marker-alt" /> <span>{partnerInfo.location || 'Unknown'}</span></div>
+                <div><i className="fas fa-venus-mars" /> <span>{partnerInfo.gender || 'Unknown'}</span></div>
+                <div><i className="fas fa-star" /> <span>Level {(() => { if (partnerInfo.created_at) { const hours = Math.floor((Date.now() - new Date(partnerInfo.created_at).getTime()) / 3600000); return Math.max(1, hours); } return 1; })()}</span></div>
+              </div>
+              {partnerInfo.interests?.length > 0 && (
+                <div className="interests">{partnerInfo.interests.map((i, idx) => <span key={idx} className="interest-tag">{i}</span>)}</div>
+              )}
+            </div>
+          )}
+
+          <div className="stats-bar">
+            <div className="stat-item"><div className="stat-value">{stats.matches}</div><div className="stat-label">Matches</div></div>
+            <div className="stat-item"><div className="stat-value">{matchTime}</div><div className="stat-label">Time</div></div>
+            <div className="stat-item"><div className="stat-value">{stats.level}</div><div className="stat-label">Level</div></div>
+            <div className="stat-item" style={{ position: 'relative' }}>
+              <div className="stat-label">Signal</div>
+              <div className={`network-quality ${networkQuality}`} title="Network Quality">
+                <div className="network-bar" /><div className="network-bar" /><div className="network-bar" />
+              </div>
+            </div>
+          </div>
+
+          <div className="controls" role="toolbar" aria-label="Video Call Controls">
+            {!isInCall && !partnerInfo ? (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="control-btn primary" title="Start Chatting" aria-label="Start Chatting" onClick={startMatching} disabled={isRecoveringTracks}>
+                  <i className={`fas ${isRecoveringTracks ? 'fa-spinner fa-spin' : 'fa-play'}`} />
+                </button>
+                <button className="control-btn" title="Send Gift" aria-label="Send Gift" onClick={() => setShowGifts(true)}><i className="fas fa-gift" /></button>
+                <button className="control-btn" title="Video Effects" aria-label="Video Effects" onClick={() => setShowEffects(v => !v)}><i className="fas fa-magic" /></button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                <button className="control-btn" title="Next (Skip)" aria-label="Next Partner" onClick={handleNext}><i className="fas fa-forward" /></button>
+                <button className="control-btn" title="Chat" aria-label="Open Chat" onClick={() => setShowChat(v => !v)}><i className="fas fa-comment" /></button>
+                <button className="control-btn" title="Send Gift" aria-label="Send Gift" onClick={() => setShowGifts(true)}><i className="fas fa-gift" /></button>
+                <button className={`control-btn ${isScreenSharingRef.current ? 'active' : ''}`} title={isScreenSharingRef.current ? 'Stop Sharing' : 'Share Screen'} aria-label="Share Screen" onClick={toggleScreenShare}><i className="fas fa-desktop" /></button>
+                <button className="control-btn" title="Switch Camera" aria-label="Switch Camera" onClick={switchCamera}><i className="fas fa-sync-alt" /></button>
+                <button className="control-btn" title="Report" aria-label="Report User" onClick={() => setShowReport(true)}><i className="fas fa-flag" /></button>
+                <button className="control-btn" title="Like" aria-label="Like User" onClick={handleLike}><i className="fas fa-heart" /></button>
+                <button className="control-btn" title="Change Layout" aria-label="Change Layout" onClick={toggleLayout}><i className="fas fa-columns" /></button>
+                <button className="control-btn danger" title="Stop" aria-label="Stop Call" onClick={doEndCall}><i className="fas fa-stop" /></button>
+              </div>
+            )}
+          </div>
+
+          {showEffects && (
+            <div className="effects-panel active" role="menu">
+              {[['none', 'fa-ban', 'No Effect'], ['blur', 'fa-eye-slash', 'Blur'], ['grayscale', 'fa-adjust', 'B&W'], ['sepia', 'fa-image', 'Sepia'], ['invert', 'fa-exchange-alt', 'Invert'], ['contrast', 'fa-sun', 'High Contrast']].map(([eff, icon, title]) => (
+                <button key={eff} className={`effect-btn ${activeEffect === eff ? 'active' : ''}`} onClick={() => applyEffect(eff)} title={title}><i className={`fas ${icon}`} /></button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* SETTINGS PANEL */}
+      <div className={`side-panel left ${showSettings ? 'open' : ''}`} role="dialog" aria-label="Settings">
+        <div className="panel-header">
+          <h2>Settings</h2>
+          <button className="control-btn" onClick={() => setShowSettings(false)} aria-label="Close Settings"><i className="fas fa-times" /></button>
+        </div>
+        <div className="panel-content">
+          <div className="form-group"><label>I am</label><select className="form-control" value={genderSelect} onChange={e => setGenderSelect(e.target.value)}><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div>
+          <div className="form-group"><label>Looking for</label><select className="form-control" value={lookingFor} onChange={e => setLookingFor(e.target.value)}><option value="any">Anyone</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div>
+          
+          {/* LOCATION SCROLL */}
+          <div className="form-group">
+            <label>Location</label>
+            <CountryScroll value={locationSelect} onChange={setLocationSelect} />
+          </div>
+
+          <div className="form-group"><label>Interests (comma separated, max 5)</label><input type="text" className="form-control" value={interestsInput} onChange={e => setInterestsInput(e.target.value)} placeholder="Music, Gaming, Sports..." /></div>
+          <button className="btn btn-primary" onClick={saveSettings} style={{ width: '100%' }}>Save Settings</button>
+        </div>
+      </div>
+
+      {/* PROFILE PANEL */}
+      <div className={`side-panel right ${showProfile ? 'open' : ''}`} role="dialog" aria-label="Profile">
+        <div className="panel-header"><h2>Profile</h2><button className="control-btn" onClick={() => setShowProfile(false)} aria-label="Close Profile"><i className="fas fa-times" /></button></div>
+        <div className="panel-content panel-content-scrollable">
+          <div className="profile-hero">
+            <div className="profile-avatar-ring">
+              <div className="avatar-fallback" id="profileAvatarInner">
+                {user?.avatar?.startsWith('http') || user?.avatar?.startsWith('data:') ? (
+                  <img src={user.avatar} alt="Avatar" onError={e => { e.target.style.display = 'none'; e.target.parentElement.innerHTML = '<i className="fas fa-user"></i>'; }} />
+                ) : (<span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-dim)' }}>{(user?.username || user?.nickname || 'U').substring(0, 2).toUpperCase()}</span>)}
+              </div>
+              <div className="profile-avatar-edit" onClick={() => document.getElementById('avatarFileInput')?.click()} title="Change Avatar" role="button" tabIndex={0}><i className="fas fa-camera" /></div>
+              <input type="file" id="avatarFileInput" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} />
+            </div>
+            <div className="profile-name-row"><span className="profile-display-name">{user?.display_name || user?.username || 'User'}</span><span className={`profile-provider-badge ${providerInfo.cls}`}><i className={providerInfo.icon} /> {providerInfo.label}</span></div>
+            {user?.email && (<div className="profile-email"><i className="fas fa-envelope" style={{ fontSize: '0.75rem' }} /><span>{maskEmail(user.email)}</span></div>)}
+            <div className="profile-coins-row"><i className="fas fa-coins" /><span>{userCoins}</span></div>
+          </div>
+          <div className="profile-stats-grid">
+            <div className="profile-stat-cell"><div className="val">{stats.matches}</div><div className="lbl">Matches</div></div>
+            <div className="profile-stat-cell"><div className="val">{stats.level}</div><div className="lbl">Level</div></div>
+            <div className="profile-stat-cell"><div className="val">{stats.likes}</div><div className="lbl">Likes</div></div>
+          </div>
+          <div className="profile-info-list">
+            <ProfileInfoRow icon="fa-shield-alt" label="Age Verified" value={user?.age_verified ? 'Verified' : 'Not Verified'} cls={user?.age_verified ? 'verified' : 'unverified'} />
+            <ProfileInfoRow icon="fa-venus-mars" label="Gender" value={user?.gender && user.gender !== 'any' ? user.gender.charAt(0).toUpperCase() + user.gender.slice(1) : 'Not Set'} cls={user?.gender && user.gender !== 'any' ? '' : 'none'} />
+            <ProfileInfoRow icon="fa-map-marker-alt" label="Location" value={user?.location && user.location !== 'any' ? user.location.charAt(0).toUpperCase() + user.location.slice(1) : 'Not Set'} cls={user?.location && user.location !== 'any' ? '' : 'none'} />
+            <ProfileInfoRow icon="fa-calendar-alt" label="Member Since" value={formatDate(user?.created_at)} cls="" />
+            <ProfileInfoRow icon="fa-fingerprint" label="User ID" value={user?.id ? String(user.id).substring(0, 12) + '...' : '-'} cls="none" monospace />
+          </div>
+          <div className="profile-actions">
+            <button className="profile-action-btn edit" onClick={() => { setEditName(user?.display_name || user?.username || ''); setShowEditName(true); }}><i className="fas fa-pen" /> Edit Display Name</button>
+            <button className="profile-action-btn coins" onClick={() => setShowPayment(true)}><i className="fas fa-coins" /> Get Coins</button>
+            {!user?.age_verified && (<button className="profile-action-btn verify" onClick={() => setShowAgeVerify(true)}><i className="fas fa-id-card" /> Verify Your Age</button>)}
+            <button className="profile-action-btn logout" onClick={logout}><i className="fas fa-sign-out-alt" /> Logout</button>
+          </div>
+        </div>
+      </div>
+
+      {showEditName && (
+        <div className="modal-overlay active" onClick={() => setShowEditName(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header"><h3>Edit Display Name</h3><button className="control-btn" onClick={() => setShowEditName(false)} aria-label="Close"><i className="fas fa-times" /></button></div>
+            <div className="form-group"><label>Display Name (max 20 characters)</label><input type="text" className="form-control" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Enter new name" maxLength={20} /></div>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}><button className="btn" style={{ background: 'var(--dark)', color: 'var(--text)' }} onClick={() => setShowEditName(false)}>Cancel</button><button className="btn btn-primary" onClick={saveProfileName}>Save</button></div>
+          </div>
+        </div>
+      )}
+
+      {showChat && (
+        <div className="side-panel right open" style={{ display: 'flex', flexDirection: 'column' }} role="dialog" aria-label="Chat">
+          <div className="panel-header"><h3>Chat</h3><button className="control-btn" onClick={() => setShowChat(false)} aria-label="Close Chat"><i className="fas fa-times" /></button></div>
+          <div className="chat-messages" aria-live="polite">
+            {chatMessages.map(m => (
+              <div key={m.id} style={{ marginBottom: 10, textAlign: m.isOwn ? 'right' : 'left' }}>
+                <div style={{ fontSize: '0.72rem', color: m.isOwn ? 'var(--primary)' : 'var(--secondary)', marginBottom: 3, fontWeight: 600 }}>{m.name}</div>
+                <span style={{ background: m.isOwn ? 'var(--primary)' : 'var(--dark-card)', padding: '8px 14px', borderRadius: m.isOwn ? '14px 14px 4px 14px' : '14px 14px 14px 4px', display: 'inline-block', maxWidth: '80%', wordBreak: 'break-word' }}>{escapeHtml(m.msg)}</span>
+              </div>
+            ))}
+          </div>
+          {showTyping && <div style={{ padding: '0 20px 5px', fontSize: '0.8rem', color: 'var(--text-muted)', height: 18 }}>Stranger is typing...</div>}
+          <div style={{ padding: 15, borderTop: '1px solid var(--glass-border)', display: 'flex', gap: 10 }}>
+            <input type="text" value={messageInput} onChange={e => setMessageInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') sendMessage(); if (socketRef.current?.connected && currentRoomRef.current) socketRef.current.emit('typing', { room: currentRoomRef.current }); }} placeholder="Type a message..." style={{ flex: 1, padding: '10px 15px', background: 'var(--dark)', border: '1px solid var(--glass-border)', borderRadius: 25, color: 'var(--text)', fontFamily: 'inherit', outline: 'none' }} maxLength={500} />
+            <button onClick={sendMessage} style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'var(--primary)', color: 'white', cursor: 'pointer', flexShrink: 0 }} aria-label="Send Message"><i className="fas fa-paper-plane" /></button>
+          </div>
+        </div>
+      )}
+
+      {showReport && (
+        <div className="modal-overlay active" onClick={() => { setShowReport(false); setSelectedReport(null); setReportDetails(''); }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header"><h3>Report User</h3></div>
+            <div className="report-reasons" role="listbox">
+              {[['Inappropriate behavior', 'fa-user-times', 'var(--danger)'], ['Spamming or scam attempts', 'fa-ban', 'var(--warning)'], ['Appears to be under 18', 'fa-child', 'var(--primary)'], ['Threats or violence', 'fa-fist-raised', 'var(--danger)'], ['Nudity or sexual content', 'fa-eye-slash', 'var(--danger)'], ['Other rule violation', 'fa-exclamation-triangle', 'var(--warning)']].map(([reason, icon, color]) => (
+                <div key={reason} className={`report-option ${selectedReport === reason ? 'selected' : ''}`} role="option" onClick={() => setSelectedReport(reason)}><i className={`fas ${icon}`} style={{ color }} /> {reason}</div>
+              ))}
+            </div>
+            <div className="form-group"><label>Additional details (optional)</label><textarea className="form-control" value={reportDetails} onChange={e => setReportDetails(e.target.value)} rows={3} placeholder="Provide more information..." maxLength={200} /></div>
+            <div style={{ display: 'flex', gap: 10 }}><button className="btn btn-primary" onClick={submitReport}>Submit Report</button><button className="btn" style={{ background: 'var(--dark)', color: 'var(--text)' }} onClick={() => { setShowReport(false); setSelectedReport(null); setReportDetails(''); }}>Cancel</button></div>
+          </div>
+        </div>
+      )}
+
+      {showGifts && (
+        <div className="modal-overlay active" onClick={() => setShowGifts(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header"><h3>Send a Gift</h3><button className="control-btn" onClick={() => setShowGifts(false)} aria-label="Close"><i className="fas fa-times" /></button></div>
+            <div className="gift-info-note"><i className="fas fa-coins" style={{color: '#fbbf24'}} /> Spend your coins to send a virtual gift!</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 15, padding: 20 }}>
+              {[
+                ['rose', 10, '🌹', 'Rose'], 
+                ['heart', 25, '❤️', 'Heart'], 
+                ['star', 50, '⭐', 'Star'], 
+                ['diamond', 100, '💎', 'Diamond'], 
+                ['crown', 200, '👑', 'Crown'], 
+                ['rocket', 500, '🚀', 'Rocket']
+              ].map(([type, coinCost, emoji, label]) => (
+                <button key={type} className="gift-btn" onClick={() => sendGift(type, coinCost)} style={{ padding: 20, background: 'var(--dark)', border: '2px solid transparent', borderRadius: 12, cursor: 'pointer', transition: 'all 0.2s' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: 5 }}>{emoji}</div>
+                  <div style={{ fontWeight: 600 }}>{label}</div>
+                  <div style={{ color: '#fbbf24', fontSize: '0.9rem', fontWeight: 700 }}>{coinCost} 🪙</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPayment && (
+        <div className="modal-overlay active" onClick={() => setShowPayment(false)}>
+          <div className="payment-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header"><h3>Get Coins</h3></div>
+            <div className="coins-display"><i className="fas fa-coins" /> <span>{userCoins}</span></div>
+            <div className="coin-packages">
+              {[100, 250, 500, 1000].map((coins) => {
+                const prices = { 100: '4.99', 250: '9.99', 500: '19.99', 1000: '39.99' };
+                return (
+                  <div key={coins} className={`coin-package ${selectedCoinPackage?.coins === coins ? 'selected' : ''}`} onClick={() => setSelectedCoinPackage({ coins, price: parseFloat(prices[coins]) })} role="button" tabIndex={0}><div className="coin-amount">{coins}</div><div className="coin-price">${prices[coins]}</div></div>
+                );
+              })}
+            </div>
+            <button className="btn btn-primary" onClick={purchaseCoins} style={{ width: '100%', marginTop: 20 }}>Purchase Coins</button>
+          </div>
+        </div>
+      )}
+
+      <button className="fab" onClick={() => setShowSettings(v => !v)} title="Settings" aria-label="Open Settings"><i className="fas fa-cog" /></button>
+      <button className="fab" style={{ bottom: 90 }} onClick={() => { setShowProfile(v => !v); if (!showProfile) loadProfile(); }} title="Profile" aria-label="Open Profile"><i className="fas fa-user" /></button>
+      <a href="/chat" className="fab" style={{ bottom: 150, textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Text Chat" aria-label="Switch to Text Chat"><i className="fas fa-comment-dots" /></a>
+    </>
+  );
+}
+
+function ProfileInfoRow({ icon, label, value, cls = '', monospace = false }) {
+  return (
+    <div className="profile-info-row">
+      <div className="profile-info-left">
+        <div className="profile-info-icon"><i className={`fas ${icon}`} /></div>
+        <div>
+          <div className="profile-info-label">{label}</div>
+          <div className={`profile-info-value ${cls}`} style={monospace ? { fontSize: '0.8rem', fontFamily: 'monospace' } : {}}>{value}</div>
+        </div>
+      </div>
     </div>
   );
 }
