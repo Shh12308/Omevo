@@ -49,6 +49,16 @@ const Home = () => {
       fontWeight: 'bold',
       fontSize: '16px',
     },
+    footer: {
+  marginTop: '25px',
+  fontSize: '13px',
+  color: '#ccc',
+},
+footerLink: {
+  color: '#1db9ff',
+  textDecoration: 'none',
+  margin: '0 5px',
+},
     icon: {
       width: '24px',
       marginRight: '10px',
@@ -99,6 +109,17 @@ const Home = () => {
           />
           Sign in with Facebook
         </button>
+        <div style={styles.footer}>
+  By continuing, you agree to our{' '}
+  <a href="/terms" style={styles.footerLink}>
+    Terms of Service
+  </a>
+  {' '}and{' '}
+  <a href="/privacy" style={styles.footerLink}>
+    Privacy Policy
+  </a>.
+</div>
+        
       </div>
     </div>
   );
