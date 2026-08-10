@@ -467,7 +467,7 @@ export default function Video() {
     setShowMatchModal(false);
     setPendingMatch(null);
     setShowBlurOverlay(false);
-    safeFetch(CONFIG.BACKEND + '/queue/leave', { method: 'POST', headers: { Authorization: 'Bearer ' + tokenRef.current } }).catch(() => {});
+    if (socketRef.current?.connected) socketRef.current.emit('leave_queue');
     setTimeout(() => startMatching(), 500);
   }, []);
 
@@ -523,7 +523,13 @@ export default function Video() {
       if (d.authenticated && d.user) {
         setUser(d.user);
         setStats(prev => ({ ...prev, level: d.user.level || 1 }));
-        if (d.user.banned_until && new Date(d.user.banned_until) > new Date()) { setBanData({ reason: d.user.ban_reason, until: d.user.banned_until, type: null }); return true; }
+        if (d.user.banned_until && new Date(d.user.banned_until) > new Date()) { 
+          setBanData({ reason: d.user.ban_reason, until: d.user.banned_until, type: null }); 
+          return true; 
+        }
+        if (!d.user.age_verified) {
+          setShowAgeVerify(true);
+        }
       }
     } catch {}
     return false;
@@ -616,38 +622,37 @@ export default function Video() {
       const isBanned = await checkBanStatus();
       if (isBanned) { setLoading(false); return; }
       setLoading(false);
-      setShowPermission(true);
+      // Only request camera if age is already verified
+      if (user?.age_verified) setShowPermission(true);
     })();
-  }, [checkBanStatus]);
+  }, [checkBanStatus, user?.age_verified]);
 
+  /* ===================== SOCKET-BASED MATCHMAKING ===================== */
   const startMatching = async () => {
     if (isMatchingRef.current || isInCallRef.current) return;
     if (!permissionsRef.current) { addToast('Grant camera permissions first', 'error'); setShowPermission(true); return; }
     if (!tokenRef.current) { addToast('Please log in', 'error'); return; }
-    if (!socketRef.current || !socketRef.current.connected) return;
+    if (!socketRef.current || !socketRef.current.connected) { addToast('Connecting to server...', 'info'); return; }
+    if (!user?.age_verified) { setShowAgeVerify(true); return; }   // enforce age
+
     const checkTrack = (track) => { if (!track || !track.getMediaStreamTrack) return true; return track.getMediaStreamTrack().readyState === 'ended'; };
-    if (checkTrack(localTracksRef.current.audioTrack) || checkTrack(localTracksRef.current.videoTrack)) { addToast('Recovering camera...', 'info'); await recoverTracks(); return; }
+    if (checkTrack(localTracksRef.current.audioTrack) || checkTrack(localTracksRef.current.videoTrack)) { 
+      addToast('Recovering camera...', 'info'); await recoverTracks(); return; 
+    }
+    
     isMatchingRef.current = true;
     setShowBlurOverlay(true);
-    try {
-      const payload = { gender: preferencesRef.current.gender, looking_for: preferencesRef.current.looking_for, location: locationSelect, interests: preferencesRef.current.interests, nickname: (user && (user.username || user.nickname)) || 'User' };
-      const r = await safeFetch(CONFIG.BACKEND + '/queue/enqueue', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current }, body: JSON.stringify(payload) });
-      if (!r.ok) { const e = await r.json().catch(() => ({ error: 'Enqueue failed' })); throw new Error(e.error || 'Enqueue failed'); }
-      const d = await r.json();
-      if (d.matched) { setPendingMatch({ peerId: d.peerId, channel: d.channel, peerInfo: d.peerInfo }); setShowMatchModal(true); }
-      else { addToast('Looking for a match...', 'info'); setTimeout(() => { if (isMatchingRef.current) checkForMatch(); }, 3000); }
-    } catch (e) { addToast(e.message || 'Matching failed', 'error'); stopMatching(); }
-  };
 
-  const checkForMatch = async () => {
-    if (!isMatchingRef.current || isInCallRef.current) return;
-    try {
-      const r = await safeFetch(CONFIG.BACKEND + '/queue/check', { headers: { Authorization: 'Bearer ' + tokenRef.current } });
-      if (!r.ok) return;
-      const d = await r.json();
-      if (d.matched) { setPendingMatch({ peerId: d.peerId, channel: d.channel, peerInfo: d.peerInfo }); setShowMatchModal(true); }
-      else setTimeout(checkForMatch, 3000);
-    } catch { setTimeout(checkForMatch, 5000); }
+    // Normalize "nearby" -> "any" (backend doesn't support "nearby")
+    const normalizedLocation = locationSelect === 'nearby' ? 'any' : locationSelect;
+
+    socketRef.current.emit('join_queue', {
+      gender: preferencesRef.current.gender,
+      looking_for: preferencesRef.current.looking_for,
+      location: normalizedLocation,
+      interests: preferencesRef.current.interests,
+      nickname: (user && (user.username || user.nickname)) || 'User'
+    });
   };
 
   const stopMatching = () => {
@@ -655,7 +660,16 @@ export default function Video() {
     setShowBlurOverlay(false);
     setShowMatchModal(false);
     setPendingMatch(null);
-    safeFetch(CONFIG.BACKEND + '/queue/leave', { method: 'POST', headers: { Authorization: 'Bearer ' + tokenRef.current } }).catch(() => {});
+    if (socketRef.current?.connected) socketRef.current.emit('leave_queue');
+  };
+
+  const handleNext = () => { 
+    doEndCallRef.current(); 
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('next');
+    } else {
+      setTimeout(startMatching, 500);
+    }
   };
 
   const startModerationLoop = (roomId) => {
@@ -768,17 +782,21 @@ export default function Video() {
       const d = await r.json();
       
       if (d.success) {
-        // Success: Deduct coins locally and show animation
-        setUserCoins(prev => Math.max(0, prev - costInCoins));
+        // ✅ Use server's balance instead of computing locally
+        if (typeof d.newBalance === 'number') {
+          setUserCoins(d.newBalance);
+          setUser(prev => prev ? { ...prev, coins: d.newBalance } : prev);
+        } else {
+          setUserCoins(prev => Math.max(0, prev - costInCoins));  // fallback
+        }
         triggerGiftAnimation(type);
         setShowGifts(false);
         addToast('Gift sent!', 'success');
       } else {
-        // Error handling
         if (d.code === 'INSUFFICIENT_FUNDS') {
           addToast('Not enough coins', 'error');
-          setShowGifts(false); // Close gift modal
-          setShowPayment(true); // Open coin purchase modal
+          setShowGifts(false); 
+          setShowPayment(true); 
         } else {
           throw new Error(d.error || 'Failed to send gift');
         }
@@ -819,7 +837,12 @@ export default function Video() {
     if (age < 18) { addToast('You must be 18 or older. You are ' + age + '.', 'error'); setShowAgeVerify(false); return; }
     try {
       const r = await safeFetch(CONFIG.BACKEND + '/api/user/verify-age', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current }, body: JSON.stringify({ age }) });
-      if (r.ok) { setUser(prev => prev ? { ...prev, age_verified: true } : prev); addToast('Age verified!', 'success'); setShowAgeVerify(false); }
+      if (r.ok) { 
+        setUser(prev => prev ? { ...prev, age_verified: true } : prev); 
+        addToast('Age verified!', 'success'); 
+        setShowAgeVerify(false); 
+        setShowPermission(true); // Proceed to camera permission request
+      }
       else { const d = await r.json().catch(() => ({ error: 'Failed' })); addToast(d.error || 'Verification failed', 'error'); }
     } catch { addToast('Error', 'error'); }
   };
@@ -877,8 +900,6 @@ export default function Video() {
     if (socketRef.current && currentRoomRef.current) socketRef.current.emit('reaction', { type: 'like', room: currentRoomRef.current });
   };
 
-  const handleNext = () => { doEndCallRef.current(); setTimeout(startMatching, 500); };
-
   const providerInfo = user ? getProviderInfo(user.provider) : getProviderInfo(null);
 
   /* ===================== CANVAS PARTICLES ===================== */
@@ -925,9 +946,49 @@ export default function Video() {
     if (!tokenRef.current) return;
     const socket = io(CONFIG.BACKEND, { auth: { token: tokenRef.current } });
     socketRef.current = socket;
+    
     socket.on('connect', () => {});
-    socket.on('authenticated', () => {});
+    socket.on('authenticated', (d) => { if (d?.userId) userIdRef.current = d.userId; });
     socket.on('disconnect', () => {});
+    
+    // New matchmaking queue events
+    socket.on('queue_joined', (d) => {
+      addToastRef.current(`In queue · ${d.position} waiting`, 'info');
+    });
+
+    socket.on('queue_waiting', (d) => {
+      if (d?.message) addToastRef.current(d.message, 'info');
+    });
+
+    socket.on('queue_left', () => {
+      isMatchingRef.current = false;
+      setShowBlurOverlay(false);
+    });
+
+    socket.on('auto_requeue', (d) => {
+      if (d?.preferences) {
+        preferencesRef.current = { ...preferencesRef.current, ...d.preferences };
+      }
+      setTimeout(() => startMatching(), 500);
+    });
+
+    socket.on('next_ready', () => {});
+
+    socket.on('peer_joined', (d) => {
+      if (d?.username) addToastRef.current(`${d.username} joined`, 'info');
+    });
+
+    socket.on('reaction', (d) => {
+      if (d?.type === 'like') {
+        triggerGiftAnimation('heart');
+        addToastRef.current(`${d.username || 'Partner'} liked you!`, 'success');
+      }
+    });
+
+    socket.on('queue_status', (d) => {
+      if (d?.inQueue) addToastRef.current(`Queue position: ${d.position}`, 'info');
+    });
+
     socket.on('match_found', (d) => {
       if (isMatchingRef.current && !isInCallRef.current) {
         isMatchingRef.current = false;
@@ -935,6 +996,7 @@ export default function Video() {
         setShowMatchModal(true);
       }
     });
+    
     socket.on('peer_left', () => { addToastRef.current('Partner disconnected', 'info'); doEndCallRef.current(); });
     socket.on('banned', (d) => { doEndCallRef.current(); setBanData({ reason: d.reason, until: d.until, type: null }); });
     socket.on('moderation_action', (d) => { if (d.banned) { doEndCallRef.current(); setBanData({ reason: d.reason, until: null, type: d.type, text: d.text, offendingFrame: d.offendingFrame }); } });
@@ -944,6 +1006,7 @@ export default function Video() {
     socket.on('report_submitted', (d) => addToastRef.current(d.message || 'Report submitted', 'success'));
     socket.on('typing', (d) => { if (d.uid && userIdRef.current && String(d.uid) !== String(userIdRef.current)) { setShowTyping(true); setTimeout(() => setShowTyping(false), 3000); } });
     socket.on('error', (d) => { if (d.message) addToastRef.current(d.message, 'error'); });
+    
     return () => { socket.disconnect(); socketRef.current = null; };
   }, [addMsgToChat, triggerGiftAnimation]);
 
