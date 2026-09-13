@@ -541,6 +541,7 @@ export default function Video() {
       const AgoraRTC = window.AgoraRTC;
       if (!AgoraRTC) throw new Error('AgoraRTC not loaded');
       
+      // Attempt to create tracks
       const audio = await AgoraRTC.createMicrophoneAudioTrack();
       const video = await AgoraRTC.createCameraVideoTrack({ encoderConfig: { width: 1280, height: 720, frameRate: 30, bitrate: 1710 } });
       
@@ -621,6 +622,7 @@ export default function Video() {
       const isBanned = await checkBanStatus();
       if (isBanned) { setLoading(false); return; }
       setLoading(false);
+      // Only request camera if age is already verified
       if (user?.age_verified) setShowPermission(true);
     })();
   }, [checkBanStatus, user?.age_verified]);
@@ -631,7 +633,7 @@ export default function Video() {
     if (!permissionsRef.current) { addToast('Grant camera permissions first', 'error'); setShowPermission(true); return; }
     if (!tokenRef.current) { addToast('Please log in', 'error'); return; }
     if (!socketRef.current || !socketRef.current.connected) { addToast('Connecting to server...', 'info'); return; }
-    if (!user?.age_verified) { setShowAgeVerify(true); return; }
+    if (!user?.age_verified) { setShowAgeVerify(true); return; }   // enforce age
 
     const checkTrack = (track) => { if (!track || !track.getMediaStreamTrack) return true; return track.getMediaStreamTrack().readyState === 'ended'; };
     if (checkTrack(localTracksRef.current.audioTrack) || checkTrack(localTracksRef.current.videoTrack)) { 
@@ -641,6 +643,7 @@ export default function Video() {
     isMatchingRef.current = true;
     setShowBlurOverlay(true);
 
+    // Normalize "nearby" -> "any" (backend doesn't support "nearby")
     const normalizedLocation = locationSelect === 'nearby' ? 'any' : locationSelect;
 
     socketRef.current.emit('join_queue', {
@@ -779,11 +782,12 @@ export default function Video() {
       const d = await r.json();
       
       if (d.success) {
+        // ✅ Use server's balance instead of computing locally
         if (typeof d.newBalance === 'number') {
           setUserCoins(d.newBalance);
           setUser(prev => prev ? { ...prev, coins: d.newBalance } : prev);
         } else {
-          setUserCoins(prev => Math.max(0, prev - costInCoins));
+          setUserCoins(prev => Math.max(0, prev - costInCoins));  // fallback
         }
         triggerGiftAnimation(type);
         setShowGifts(false);
@@ -806,7 +810,7 @@ export default function Video() {
   const initiateUnbanPayment = async () => {
     if (!user?.id) { addToast('User not identified', 'error'); return; }
     try {
-      const r = await safeFetch(CONFIG.BACKEND + '/api/pay-unban', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current } });
+      const r = await safeFetch(CONFIG.BACKEND + '/api/pay-unban', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: String(user.id) }) });
       const d = await r.json();
       if (d.url) window.location.href = d.url;
       else throw new Error(d.error || 'Failed');
@@ -822,20 +826,25 @@ export default function Video() {
     } catch { addToast('Failed', 'error'); }
   };
 
-  // FIX: Send day, month, year instead of calculated age
-  const verifyAge = async () => {
+    const verifyAge = async () => {
     const day = parseInt(ageDay), month = parseInt(ageMonth), year = parseInt(ageYear);
     if (!day || !month || !year || year < 1920 || year > 2010 || day < 1 || day > 31 || month < 1 || month > 12) { 
       addToast('Please enter a valid date of birth', 'error'); return; 
     }
+    
     const birthDate = new Date(year, month - 1, day);
     const today = new Date();
     let age = today.getFullYear() - birthDate.getFullYear();
     const mDiff = today.getMonth() - birthDate.getMonth();
     if (mDiff < 0 || (mDiff === 0 && today.getDate() < birthDate.getDate())) age--;
     
-    if (age < 18) { addToast('You must be 18 or older. You are ' + age + '.', 'error'); setShowAgeVerify(false); return; }
+    if (age < 18) { 
+      addToast('You must be 18 or older. You are ' + age + '.', 'error'); 
+      setShowAgeVerify(false); return; 
+    }
+    
     try {
+      // Send day, month, year to backend instead of just age
       const r = await safeFetch(CONFIG.BACKEND + '/api/user/verify-age', { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current }, 
@@ -846,8 +855,10 @@ export default function Video() {
         addToast('Age verified!', 'success'); 
         setShowAgeVerify(false); 
         setShowPermission(true); 
+      } else { 
+        const d = await r.json().catch(() => ({ error: 'Failed' })); 
+        addToast(d.error || 'Verification failed', 'error'); 
       }
-      else { const d = await r.json().catch(() => ({ error: 'Failed' })); addToast(d.error || 'Verification failed', 'error'); }
     } catch { addToast('Error', 'error'); }
   };
 
@@ -955,6 +966,7 @@ export default function Video() {
     socket.on('authenticated', (d) => { if (d?.userId) userIdRef.current = d.userId; });
     socket.on('disconnect', () => {});
     
+    // New matchmaking queue events
     socket.on('queue_joined', (d) => {
       addToastRef.current(`In queue · ${d.position} waiting`, 'info');
     });
@@ -1331,6 +1343,7 @@ export default function Video() {
           <div className="form-group"><label>I am</label><select className="form-control" value={genderSelect} onChange={e => setGenderSelect(e.target.value)}><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div>
           <div className="form-group"><label>Looking for</label><select className="form-control" value={lookingFor} onChange={e => setLookingFor(e.target.value)}><option value="any">Anyone</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div>
           
+          {/* LOCATION SCROLL */}
           <div className="form-group">
             <label>Location</label>
             <CountryScroll value={locationSelect} onChange={setLocationSelect} />
