@@ -826,24 +826,39 @@ export default function Video() {
     } catch { addToast('Failed', 'error'); }
   };
 
-  const verifyAge = async () => {
+    const verifyAge = async () => {
     const day = parseInt(ageDay), month = parseInt(ageMonth), year = parseInt(ageYear);
-    if (!day || !month || !year || year < 1920 || year > 2010 || day < 1 || day > 31 || month < 1 || month > 12) { addToast('Please enter a valid date of birth', 'error'); return; }
+    if (!day || !month || !year || year < 1920 || year > 2010 || day < 1 || day > 31 || month < 1 || month > 12) { 
+      addToast('Please enter a valid date of birth', 'error'); return; 
+    }
+    
     const birthDate = new Date(year, month - 1, day);
     const today = new Date();
     let age = today.getFullYear() - birthDate.getFullYear();
     const mDiff = today.getMonth() - birthDate.getMonth();
     if (mDiff < 0 || (mDiff === 0 && today.getDate() < birthDate.getDate())) age--;
-    if (age < 18) { addToast('You must be 18 or older. You are ' + age + '.', 'error'); setShowAgeVerify(false); return; }
+    
+    if (age < 18) { 
+      addToast('You must be 18 or older. You are ' + age + '.', 'error'); 
+      setShowAgeVerify(false); return; 
+    }
+    
     try {
-      const r = await safeFetch(CONFIG.BACKEND + '/api/user/verify-age', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current }, body: JSON.stringify({ age }) });
+      // Send day, month, year to backend instead of just age
+      const r = await safeFetch(CONFIG.BACKEND + '/api/user/verify-age', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokenRef.current }, 
+        body: JSON.stringify({ day, month, year }) 
+      });
       if (r.ok) { 
         setUser(prev => prev ? { ...prev, age_verified: true } : prev); 
         addToast('Age verified!', 'success'); 
         setShowAgeVerify(false); 
-        setShowPermission(true); // Proceed to camera permission request
+        setShowPermission(true); 
+      } else { 
+        const d = await r.json().catch(() => ({ error: 'Failed' })); 
+        addToast(d.error || 'Verification failed', 'error'); 
       }
-      else { const d = await r.json().catch(() => ({ error: 'Failed' })); addToast(d.error || 'Verification failed', 'error'); }
     } catch { addToast('Error', 'error'); }
   };
 
