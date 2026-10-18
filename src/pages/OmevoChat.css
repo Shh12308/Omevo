@@ -1,0 +1,134 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+:root {
+  --omevo-bg: #090b10;
+  --omevo-panel: rgba(17, 21, 30, .92);
+  --omevo-panel-2: #141923;
+  --omevo-text: #f4f7fb;
+  --omevo-muted: #8993a5;
+  --omevo-line: rgba(255,255,255,.085);
+  --omevo-green: #16dfad;
+  --omevo-green-dark: #09b98d;
+  --omevo-red: #ff6575;
+}
+* { box-sizing: border-box; }
+.omevo-app {
+  min-height: 100vh; height: 100dvh; overflow: auto; position: relative; isolation: isolate;
+  display: flex; flex-direction: column; color: var(--omevo-text); background: var(--omevo-bg);
+  font-family: 'DM Sans', sans-serif;
+}
+.omevo-ambient { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none;
+  background: radial-gradient(ellipse at 14% 10%, rgba(22,223,173,.10), transparent 36%),
+              radial-gradient(ellipse at 90% 78%, rgba(52,106,235,.10), transparent 38%); }
+.omevo-ambient span { position: absolute; width: 260px; aspect-ratio: 1; border-radius: 50%; filter: blur(90px); opacity: .12; background: #16dfad; animation: omevoFloat 20s ease-in-out infinite; }
+.omevo-ambient span:nth-child(1) { top: 10%; left: 8%; }
+.omevo-ambient span:nth-child(2) { right: 6%; top: 45%; background: #456bff; animation-delay: -7s; }
+.omevo-ambient span:nth-child(3) { bottom: -100px; left: 35%; background: #8c45ff; animation-delay: -13s; }
+@keyframes omevoFloat { 50% { transform: translate(28px,-22px) scale(1.13); } }
+.omevo-header { height: 76px; padding: 0 clamp(18px, 5vw, 68px); display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--omevo-line); background: rgba(9,11,16,.75); backdrop-filter: blur(18px); }
+.omevo-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--omevo-text); font: 700 25px 'Space Grotesk', sans-serif; letter-spacing: -.9px; }
+.omevo-brand-light { color: var(--omevo-green); }
+.omevo-brand-mark { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 10px; background: rgba(22,223,173,.12); }
+.omevo-brand-mark i { width: 10px; height: 10px; border-radius: 50%; background: var(--omevo-green); box-shadow: 0 0 16px rgba(22,223,173,.7); }
+.omevo-tag { margin-left: 5px; padding: 5px 7px; color: #8b96a9; border: 1px solid var(--omevo-line); border-radius: 5px; font: 600 9px 'DM Sans', sans-serif; letter-spacing: 1.3px; }
+.omevo-header-status { display: flex; align-items: center; gap: 9px; color: var(--omevo-muted); font-size: 12px; }
+.omevo-status-dot,.omevo-live-dot { width: 7px; height: 7px; display: inline-block; border-radius: 50%; background: #7e8796; }
+.omevo-status-dot.connected,.omevo-live-dot { background: var(--omevo-green); box-shadow: 0 0 10px rgba(22,223,173,.5); }
+.omevo-status-dot.searching { background: #f4b740; animation: omevoBlink 1s infinite; }
+.omevo-status-dot.offline { background: var(--omevo-red); }
+@keyframes omevoBlink { 50% { opacity: .3; } }
+.omevo-main { width: min(960px, calc(100% - 32px)); margin: 34px auto 24px; flex: 1; display: flex; flex-direction: column; }
+.omevo-chat-panel { flex: 1; min-height: 400px; display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(255,255,255,.10); border-radius: 20px; background: var(--omevo-panel); box-shadow: 0 28px 90px rgba(0,0,0,.3); backdrop-filter: blur(20px); }
+.omevo-panel-top { padding: 26px 30px 23px; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--omevo-line); }
+.omevo-eyebrow { margin-bottom: 8px; color: var(--omevo-green); font-size: 10px; font-weight: 700; letter-spacing: 1.8px; }
+.omevo-panel-top h1 { margin: 0; font: 600 clamp(22px,3vw,30px) 'Space Grotesk',sans-serif; letter-spacing: -.8px; }
+.omevo-subheading { margin-top: 7px; color: var(--omevo-muted); font-size: 13px; }
+.omevo-peer-badge { display: flex; align-items: center; gap: 10px; flex-shrink: 0; padding: 9px 13px; border: 1px solid var(--omevo-line); border-radius: 12px; background: rgba(255,255,255,.025); }
+.omevo-peer-avatar { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; color: #9ca7b9; background: #252c39; font-weight: 700; }
+.omevo-peer-badge.is-online .omevo-peer-avatar { color: #061710; background: var(--omevo-green); }
+.omevo-peer-badge strong,.omevo-peer-badge small { display: block; }
+.omevo-peer-badge strong { font-size: 12px; }
+.omevo-peer-badge small { margin-top: 3px; color: var(--omevo-muted); font-size: 10px; }
+.omevo-chat-log { flex: 1; min-height: 260px; max-height: calc(100dvh - 390px); overflow-y: auto; padding: 24px 30px; display: flex; flex-direction: column; gap: 13px; scroll-behavior: smooth; }
+.omevo-chat-log::-webkit-scrollbar { width: 5px; }
+.omevo-chat-log::-webkit-scrollbar-thumb { background: #303746; border-radius: 5px; }
+.omevo-empty { flex: 1; min-height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.omevo-empty-icon { width: 56px; height: 56px; display: grid; place-items: center; border: 1px solid rgba(22,223,173,.2); border-radius: 18px; color: var(--omevo-green); background: rgba(22,223,173,.07); }
+.omevo-empty-icon svg { width: 26px; height: 26px; }
+.omevo-empty h2 { margin-top: 19px; font: 600 17px 'Space Grotesk',sans-serif; }
+.omevo-empty p { max-width: 300px; margin-top: 8px; color: var(--omevo-muted); font-size: 12px; line-height: 1.7; }
+.omevo-message { max-width: min(76%, 620px); padding: 12px 15px; border: 1px solid var(--omevo-line); border-radius: 13px; animation: omevoIn .22s ease-out; overflow-wrap: anywhere; }
+@keyframes omevoIn { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+.omevo-message.received { align-self: flex-start; background: #1a202c; border-bottom-left-radius: 4px; }
+.omevo-message.sent { align-self: flex-end; color: #05251c; background: linear-gradient(135deg,#36edbf,#12c99b); border-color: transparent; border-bottom-right-radius: 4px; }
+.omevo-message-meta { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.omevo-message-meta strong { color: #aab5c7; font-size: 10px; }
+.omevo-message.sent .omevo-message-meta strong { color: rgba(5,37,28,.68); }
+.omevo-message-meta time { color: #7e899b; font-size: 10px; }
+.omevo-message p { white-space: pre-wrap; font-size: 13px; line-height: 1.55; }
+.omevo-message.system { max-width: 95%; align-self: center; padding: 6px 12px; border: 0; background: transparent; text-align: center; }
+.omevo-system-text { color: #8995a7; font-size: 11px; }
+.omevo-searching-card { align-self: center; display: flex; align-items: center; gap: 14px; padding: 15px 18px; border: 1px solid var(--omevo-line); border-radius: 14px; background: #151b26; }
+.omevo-searching-card strong { font-size: 13px; }
+.omevo-searching-card p { margin-top: 4px; color: var(--omevo-muted); font-size: 11px; }
+.omevo-spinner { width: 25px; height: 25px; border: 2px solid #343d4b; border-top-color: var(--omevo-green); border-radius: 50%; animation: omevoSpin .8s linear infinite; }
+@keyframes omevoSpin { to { transform: rotate(360deg); } }
+.omevo-typing { min-height: 25px; padding: 0 30px 8px; display: flex; align-items: center; gap: 9px; color: var(--omevo-muted); font-size: 11px; opacity: 0; transition: opacity .18s; }
+.omevo-typing.visible { opacity: 1; }
+.omevo-typing-dots { display: inline-flex; gap: 3px; }
+.omevo-typing-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--omevo-green); animation: omevoBlink 1s infinite; }
+.omevo-typing-dots i:nth-child(2) { animation-delay: .15s; }
+.omevo-typing-dots i:nth-child(3) { animation-delay: .3s; }
+.omevo-composer { display: flex; gap: 10px; padding: 15px 20px; border-top: 1px solid var(--omevo-line); }
+.omevo-input-wrap { min-width: 0; flex: 1; position: relative; }
+.omevo-input-wrap input { width: 100%; height: 48px; padding: 0 75px 0 15px; outline: none; border: 1px solid #2b3341; border-radius: 11px; color: var(--omevo-text); background: #0d1119; font: 13px 'DM Sans',sans-serif; transition: border-color .15s,box-shadow .15s; }
+.omevo-input-wrap input:focus { border-color: rgba(22,223,173,.65); box-shadow: 0 0 0 3px rgba(22,223,173,.07); }
+.omevo-input-wrap input:disabled { opacity: .55; cursor: not-allowed; }
+.omevo-char-count { position: absolute; top: 17px; right: 12px; color: #657083; font-size: 10px; }
+.omevo-send,.omevo-primary,.omevo-stop { min-height: 44px; padding: 0 18px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; border-radius: 10px; font: 600 12px 'DM Sans',sans-serif; cursor: pointer; transition: transform .15s,background .15s,border-color .15s; }
+.omevo-send,.omevo-primary { border: 1px solid transparent; color: #05251c; background: var(--omevo-green); }
+.omevo-send:hover:not(:disabled),.omevo-primary:hover:not(:disabled) { background: #47f0c6; transform: translateY(-1px); }
+.omevo-send:disabled,.omevo-primary:disabled { opacity: .4; cursor: not-allowed; }
+.omevo-send span,.omevo-primary span { font-size: 17px; }
+.omevo-actions { min-height: 76px; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 13px 20px 20px; }
+.omevo-actions > p { margin-right: auto; color: #9ba6b7; font-size: 11px; }
+.omevo-live-dot { margin-right: 7px; }
+.omevo-primary { min-width: 150px; min-height: 45px; }
+.omevo-stop { color: #ff8490; border: 1px solid rgba(255,101,117,.28); background: rgba(255,101,117,.08); }
+.omevo-stop:hover { border-color: var(--omevo-red); background: rgba(255,101,117,.15); }
+.omevo-safety-note { margin: 15px 0 0; text-align: center; color: #737e90; font-size: 10px; }
+.omevo-safety-note span { margin-right: 5px; color: var(--omevo-green); }
+.omevo-toasts { position: fixed; z-index: 10; top: 88px; right: 20px; display: flex; flex-direction: column; gap: 8px; max-width: min(360px,calc(100vw - 40px)); }
+.omevo-toast { display: flex; gap: 10px; align-items: center; padding: 12px 15px; border: 1px solid var(--omevo-line); border-radius: 10px; color: var(--omevo-text); background: #171e29; box-shadow: 0 12px 30px #0005; font-size: 12px; animation: omevoIn .2s ease-out; }
+.omevo-toast.error { border-color: rgba(255,101,117,.4); }
+.omevo-toast.error:first-letter { color: var(--omevo-red); }
+@media (max-width: 620px) {
+  .omevo-header { height: 64px; padding: 0 16px; }
+  .omevo-brand { font-size: 22px; }
+  .omevo-tag { display: none; }
+  .omevo-header-status { font-size: 10px; }
+  .omevo-main { width: calc(100% - 20px); margin: 12px auto; }
+  .omevo-chat-panel { border-radius: 15px; min-height: 420px; }
+  .omevo-panel-top { align-items: flex-start; padding: 19px 16px; }
+  .omevo-panel-top h1 { font-size: 21px; }
+  .omevo-subheading { max-width: 220px; font-size: 11px; line-height: 1.5; }
+  .omevo-peer-badge { padding: 6px; gap: 7px; }
+  .omevo-peer-avatar { width: 29px; height: 29px; }
+  .omevo-peer-badge strong { font-size: 10px; }
+  .omevo-peer-badge small { font-size: 9px; }
+  .omevo-chat-log { padding: 18px 13px; max-height: none; }
+  .omevo-message { max-width: 88%; }
+  .omevo-typing { padding-left: 15px; }
+  .omevo-composer { padding: 12px; gap: 7px; }
+  .omevo-input-wrap input { height: 45px; padding-left: 11px; font-size: 12px; }
+  .omevo-char-count { display: none; }
+  .omevo-send { padding: 0 13px; min-height: 45px; }
+  .omevo-actions { flex-wrap: wrap; padding: 10px 12px 16px; }
+  .omevo-actions > p { flex-basis: 100%; text-align: center; margin: 0 0 4px; }
+  .omevo-primary { min-width: 130px; flex: 1; }
+  .omevo-stop { flex: 1; }
+  .omevo-safety-note { padding: 0 10px; line-height: 1.6; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .omevo-app *, .omevo-app *::before, .omevo-app *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
